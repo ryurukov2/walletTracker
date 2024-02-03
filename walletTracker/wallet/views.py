@@ -1,7 +1,11 @@
+import numpy as np
 import asyncio
 from bisect import bisect_left
 from collections import OrderedDict
+from datetime import datetime
+from itertools import islice
 import json
+from decimal import Decimal
 import math
 import threading
 import time
@@ -12,7 +16,7 @@ from django.shortcuts import render, redirect
 from dotenv import load_dotenv
 import os
 from asgiref.sync import sync_to_async
-from .models import Wallet, Token, Transaction, WalletTokenBalance
+from .models import HistoricalETHPrice, TradeTransactionDetails, Wallet, Token, Transaction, WalletTokenBalance
 load_dotenv()
 
 # Create your views here.
@@ -37,7 +41,7 @@ def combine_records(token_tx, internal_tx, normal_tx):
 
 
 def calculate_balances_and_txns(address, combined_data):
-    transactions, balances = {}, {}
+    transactions, balances, tokens_list = {}, {}, {}
     eth_decimal = 18
     for hash, transaction_entries in combined_data.items():
         # print(transaction_entries)
@@ -48,7 +52,7 @@ def calculate_balances_and_txns(address, combined_data):
             isReceiver = False
             amount_transfered = int(transaction_entry_data['value'])
             tx_moves['timeStamp'] = transaction_entry_data['timeStamp']
-
+            tx_moves['blockNumber'] = transaction_entry_data['blockNumber']
             if transaction_entry_data['to'].lower() == address.lower():
                 isReceiver = True
             else:
@@ -84,28 +88,37 @@ def calculate_balances_and_txns(address, combined_data):
                 'token_decimal': token_decimal,
                 'token_name': token_name
             }
-            if action not in tx_moves.keys() or token_contract not in tx_moves[action].values():
+            if token_contract not in tokens_list.keys() and token_contract != 'eth':
+                token_info = {
+                    'contract': token_contract,
+                    'token_symbol': token_symbol,
+                    'token_name': token_name,
+                    'token_decimal': token_decimal
+                }
+                tokens_list[token_contract] = token_info
+
+            if action not in tx_moves.keys() or token_contract not in tx_moves[action].keys():
 
                 tx_moves.setdefault(action, {}).update(
                     {token_contract: _trade_info})
             else:
 
-                # issue here
-                tx_moves[action][token_contract]['precise_amount'] = float(
-                    tx_moves[action]['precise_amount']) + amount_transfered/(10**token_decimal)
-                tx_moves[action][token_contract]['final_amount'] = float(
-                    tx_moves[action]['final_amount']) + amount_transfered/(10**token_decimal)
 
+                tx_moves[action][token_contract]['precise_amount'] = float(
+                    tx_moves[action][token_contract]['precise_amount']) + amount_transfered/(10**token_decimal)
+                tx_moves[action][token_contract]['final_amount'] = float(
+                    tx_moves[action][token_contract]['final_amount']) + amount_transfered/(10**token_decimal)
+                # print(tx_moves[action][token_contract]['precise_amount'])
+
+            balance_modifier = 1 if isReceiver else -1
+            balance_change = (amount_transfered /
+                              (10**token_decimal)) * balance_modifier
             if token_contract not in balances.keys():
-                balance_change = amount_transfered/(10**token_decimal)
                 balances[token_contract] = {
                     'tokenSymbol': token_symbol, 'balance': balance_change}
             else:
-                balance_modifier = 1 if isReceiver else -1
-                balance_change = (amount_transfered /
-                                  (10**token_decimal)) * balance_modifier
-                balances[token_contract]['balance'] = balances[token_contract]['balance'] + \
-                    balance_change
+
+                balances[token_contract]['balance'] = balances[token_contract]['balance'] + balance_change
             # print()
 
             # if token_symbol not in balances.keys():
@@ -124,7 +137,7 @@ def calculate_balances_and_txns(address, combined_data):
         # set values in 'transactions'
         transactions[hash] = tx_moves
 
-    return balances, transactions
+    return balances, transactions, tokens_list
 
 
 def wallet_data_available_in_db(address_queried):
@@ -237,14 +250,13 @@ async def process_current_prices(prices, balances):
     total_usd_value = 0
     for contract, price in prices.items():
         if price != "None" and price != None:
-            print(price)
             usd_value = float(
                 price) * balances[contract]['balance']
-            balances_prices_info[contract] = {'latest_price': float(price)}
+            balances_prices_info[contract] = {'latest_price': price}
             balances_prices_info[contract]['usd_value'] = usd_value
             total_usd_value += usd_value
         else:
-            balances_prices_info[contract] = {'latest_price': 0}
+            balances_prices_info[contract] = {'latest_price': '0'}
             balances_prices_info[contract]['usd_value'] = 0
     balances_prices_info['total_usd_value'] = total_usd_value
     await sync_to_async(send_event)('test', 'message', data={'current_token_prices': balances_prices_info})
@@ -269,7 +281,6 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
         _a = list(filter(lambda x: x != 'eth', balances.keys()))
         _a.extend(_a)
         # current_tasks = await gather_current_prices(session, _a)
-        print(f'{time.time()} - before')
         tasks = [asyncio.create_task(gather_historic_prices(
             session, timestamps_of_eth_trades)), asyncio.create_task(gather_current_prices(session, _a))]
         # _r = await asyncio.gather(*tasks)
@@ -278,11 +289,9 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
         balances_prices_info, normalized_prices = OrderedDict(), OrderedDict()
         for completed_task in asyncio.as_completed(tasks):
             result = await completed_task
-            print(f'{time.time()} - result')
             if result['result_from'] == 'current':
-                print('current')
                 balances_prices_info = await process_current_prices(result['result'], balances)
-          
+
             elif result['result_from'] == 'historic':
                 normalized_prices = await normalize_historic_prices(result['result'])
                 # print(normalized_prices)
@@ -360,35 +369,19 @@ def calculate_purchase_exchange_rate(transactions):
             # moves['price_in_usd'] = price_of_token_in_usd
             # print(transaction_details)
             _txn_details_info = {'timeStamp': transaction_timestamp,
-                                 'block': transaction_block,
+                                 'blockNumber': transaction_block,
                                  'exchanged_token_symbol': traded_token_symbol,
                                  'exchanged_token_contract': traded_token,
                                  'is_receiver': is_receiver_of_traded_token,
+                                 'exchanged_token_amount': traded_amount,
                                  'price_in_denominated_token': price_in_denominated_token,
                                  'denominated_in': denominated_in,
                                  'price_in_usd': price_of_token_in_usd,
                                  'value_of_trade_in_eth': eth_traded}
-            # transaction_details[tx]['price_in_denominated_token'] = price_in_denominated_token
-            # transaction_details[tx]['denominated_in'] = denominated_in
-            # transaction_details[tx]['price_in_usd'] = price_of_token_in_usd
             transaction_details.setdefault(tx, {}).update(_txn_details_info)
 
-            # calculate net purchase price
-
-            # if traded_token not in average_purchase_prices.keys():
-            #     average_purchase_prices[traded_token] = {'average_purchase_price': price_of_token_in_usd,
-            #                                              'current_balance': traded_amount}
-            # else:
-            #     balance_modifier = 1 if is_receiver_of_traded_token else -1
-            #     balance_before = average_purchase_prices[traded_token]['current_balance']
-            #     average_purchase_prices[traded_token]['current_balance'] = balance_before + \
-            #         balance_modifier * (traded_amount)
-            #     if average_purchase_prices[traded_token]['current_balance'] != 0:
-            #         print(called_from(price_of_token_in_usd))
-            #         average_purchase_prices[traded_token]['average_purchase_price'] = (average_purchase_prices[traded_token]['average_purchase_price']*balance_before + balance_modifier*(
-            #             price_of_token_in_usd*traded_amount))/average_purchase_prices[traded_token]['current_balance']
-
     return transaction_details, timestamps_of_eth_trades
+
 
 def find_closest_to(price_list, timestamp):
     pos = bisect_left(price_list, timestamp)
@@ -403,6 +396,7 @@ def find_closest_to(price_list, timestamp):
     else:
         return before
 
+
 def match_historic_prices(historic_prices, transaction_details):
     # for each transaction where price is pending, get timestamp and find closest value in prices list
     list_of_timestamps = list(historic_prices.keys())
@@ -410,11 +404,15 @@ def match_historic_prices(historic_prices, transaction_details):
     tokens_p_l = OrderedDict()
     for hash, details in transaction_details.items():
         if details['denominated_in'] == "ETH" and details['price_in_usd'] == "pending":
-            txn_timestamp = int(details ['timeStamp'])
+            txn_timestamp = int(details['timeStamp'])
             is_receiver = bool(details['is_receiver'])
-            exchanged_token = details['exchanged_token_contract']
+            exchanged_token_contract = details['exchanged_token_contract']
+            exchanged_token_amount = details['exchanged_token_amount']
             # if receiver -> add average prices
-            closest_timestamp = find_closest_to(list_of_timestamps, txn_timestamp)
+
+            # calculate trade details for each transaction
+            closest_timestamp = find_closest_to(
+                list_of_timestamps, txn_timestamp)
             eth_price_at_transaction_time = historic_prices[closest_timestamp]
             trade_eth_price = details['price_in_denominated_token']
             trade_usd_price = trade_eth_price * eth_price_at_transaction_time
@@ -422,14 +420,102 @@ def match_historic_prices(historic_prices, transaction_details):
             value_of_trade_in_usd = value_of_trade_eth * eth_price_at_transaction_time
             calculated_transaction_rates[hash] = {'timeStamp': txn_timestamp,
                                                   'price_in_usd': trade_usd_price}
-            
+
             # calculations for p/l and final stats
-            token_p_l_details = tokens_p_l.setdefault(exchanged_token, {})
-            token_total_spent = token_p_l_details.setdefault('token_total_spent', value_of_trade_in_usd if is_receiver else 0)
-            token_net_entry = token_p_l_details.setdefault('token_net_entry', trade_usd_price)
-            token_gross_entry = token_p_l_details.setdefault('token_gross_entry', trade_usd_price)
-            
-    return calculated_transaction_rates
+
+            token_p_l_details = tokens_p_l.setdefault(
+                exchanged_token_contract, {})
+
+            if 'token_balance' not in token_p_l_details.keys():
+                token_p_l_details['token_balance'] = exchanged_token_amount if is_receiver else (
+                    -1 * exchanged_token_amount)
+                previous_token_balance = 0
+            else:
+                previous_token_balance = token_p_l_details['token_balance']
+                token_p_l_details['token_balance'] = (
+                    previous_token_balance + exchanged_token_amount) if is_receiver else (previous_token_balance - exchanged_token_amount)
+            if 'token_total_spent' not in token_p_l_details.keys():
+                token_total_spent = value_of_trade_in_usd if is_receiver else 0
+                token_p_l_details['token_total_spent'] = token_total_spent
+            else:
+                token_total_spent = token_p_l_details['token_total_spent']
+                if is_receiver:
+                    new_value = token_total_spent + value_of_trade_in_usd
+                    token_p_l_details['token_total_spent'] = new_value
+            if 'token_total_sold' not in token_p_l_details.keys():
+                token_total_sold = value_of_trade_in_usd if not is_receiver else 0
+                token_p_l_details['token_total_sold'] = token_total_sold
+            else:
+                token_total_sold = token_p_l_details['token_total_sold']
+                if not is_receiver:
+                    new_value = token_total_sold + value_of_trade_in_usd
+                    token_p_l_details['token_total_sold'] = new_value
+            if 'purchased_token_balance' not in token_p_l_details.keys():
+                token_p_l_details['purchased_token_balance'] = exchanged_token_amount if is_receiver else 0
+            else:
+                prev_value = token_p_l_details['purchased_token_balance']
+                new_entry_value = prev_value + \
+                    exchanged_token_amount if is_receiver else prev_value + 0
+                token_p_l_details['purchased_token_balance'] = new_entry_value
+            if 'sold_token_balance' not in token_p_l_details.keys():
+                token_p_l_details['sold_token_balance'] = exchanged_token_amount if not is_receiver else 0
+            else:
+                prev_value = token_p_l_details['sold_token_balance']
+                new_entry_value = prev_value + \
+                    exchanged_token_amount if not is_receiver else prev_value + 0
+                token_p_l_details['sold_token_balance'] = new_entry_value
+            if 'token_net_entry' not in token_p_l_details.keys():
+                token_p_l_details['token_net_entry'] = trade_usd_price if is_receiver else (
+                    -1*trade_usd_price)
+            else:
+                current_token_balance = token_p_l_details['token_balance']
+                token_net_entry = token_p_l_details['token_net_entry']
+                modifier = 1 if is_receiver else -1
+                if current_token_balance == 0:
+                    new_entry_value = 0
+                else:
+                    new_entry_value = ((token_net_entry * previous_token_balance) + (
+                        modifier*(trade_usd_price * exchanged_token_amount))) / current_token_balance
+                token_p_l_details['token_net_entry'] = new_entry_value
+            if 'token_gross_entry' not in token_p_l_details.keys():
+                token_p_l_details['token_gross_entry'] = trade_usd_price if is_receiver else 0
+            else:
+                if is_receiver:
+                    purchased_token_balance = token_p_l_details['purchased_token_balance']
+                    if purchased_token_balance == 0:
+                        new_entry_value = 0
+                    else:
+                        new_entry_value = ((token_p_l_details['token_gross_entry'] * previous_token_balance) + (
+                            trade_usd_price*exchanged_token_amount)) / purchased_token_balance
+                    token_p_l_details['token_gross_entry'] = new_entry_value
+
+            token_historic_p_l = token_p_l_details['token_total_sold'] - \
+                token_p_l_details['token_total_spent']
+            token_p_l_details['token_historic_p_l'] = token_historic_p_l
+    # print(tokens_p_l)
+
+    return calculated_transaction_rates, tokens_p_l
+
+
+def calculate_total_token_p_l(balances_prices_info, historic_balances_p_l):
+    current_tokens_p_l = OrderedDict()
+    total_wallet_p_l, total_wallet_spent, total_wallet_sold = 0, 0, 0
+    for contract, details in historic_balances_p_l.items():
+        token_historic_p_l = details['token_historic_p_l']
+        token_current_holdings_value = balances_prices_info[contract]['usd_value']
+        token_final_p_l = token_historic_p_l + token_current_holdings_value
+        token_total_spent = details['token_total_spent']
+        token_total_sold = details['token_total_sold']
+
+        current_tokens_p_l[contract] = token_final_p_l
+        total_wallet_p_l = total_wallet_p_l + token_final_p_l
+        total_wallet_spent = total_wallet_spent + token_total_spent
+        total_wallet_sold = total_wallet_sold + token_total_sold
+    current_tokens_p_l['total'] = total_wallet_p_l
+    current_tokens_p_l['total_wallet_spent'] = total_wallet_spent
+    current_tokens_p_l['total_wallet_sold'] = total_wallet_sold
+    return current_tokens_p_l
+
 
 def wallet_calaulations_thread_worker(address_queried):
     # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
@@ -442,7 +528,7 @@ def wallet_calaulations_thread_worker(address_queried):
     txlistinternal = json.loads(
         open(os.path.join(settings.BASE_DIR, 'txlistinternal.txt')).read())
     combined_data = combine_records(tokentx, txlist, txlistinternal)
-    balances, transactions = calculate_balances_and_txns(
+    balances, transactions, tokens_list = calculate_balances_and_txns(
         address_queried, combined_data)
 
     # needed during dev as reading from file is quicker than the render and event is sent before render
@@ -462,29 +548,140 @@ def wallet_calaulations_thread_worker(address_queried):
     balances_prices_info, normalized_historic_prices = asyncio.run(query_historic_and_current_prices(
         timestamps_of_eth_trades, balances))
 
-
-
-    #match the closest historic price time to each of the txns
-    calculated_historic_prices = match_historic_prices(normalized_historic_prices, transactions_details)
+    # match the closest historic price time to each of the txns
+    calculated_historic_prices, historic_balances_p_l = match_historic_prices(
+        normalized_historic_prices, transactions_details)
     # calctd = open('calctd.txt', 'a')
     # calctd.write(json.dumps(calculated_historic_prices))
     # send message
-    send_event('test', 'message', data={'finalized_usd_prices': calculated_historic_prices})
-    
-
+    send_event('test', 'message', data={
+               'finalized_usd_prices': calculated_historic_prices})
+    send_event('test', 'message', data={
+               'historic_balances_p_l': historic_balances_p_l})
+    # send_event('test', 'message', data={'balances_prices_info': balances_prices_info})
+    tokens_and_wallet_p_l_info = calculate_total_token_p_l(
+        balances_prices_info, historic_balances_p_l)
+    send_event('test', 'message', data={
+               'tokens_and_wallet_p_l_info': tokens_and_wallet_p_l_info})
     # write to db both balances and historic
+    save_wallet_info_to_db(address_queried, balances, transactions, transactions_details, balances_prices_info,
+                           normalized_historic_prices, calculated_historic_prices, historic_balances_p_l, tokens_and_wallet_p_l_info, tokens_list)
 
 
-    # trn = time.time()
-    # print(trn)
+def save_wallet_info_to_db(address_queried, balances, transactions,
+                           transactions_details, balances_prices_info, normalized_historic_prices,
+                           calculated_historic_prices, historic_balances_p_l,
+                           tokens_and_wallet_p_l_info, tokens_list):
 
-    # check historic prices (transactions [30x batches/min]) ->
-    #   ->    calculate total spent for each token based on historic prices
-    # write to DB
+    # parse the data to model objects
+    wallet = Wallet.objects.get(address=address_queried)
 
+    for contract, token_data in tokens_list.items():
+        #create Token, WalletTokenBalance objects
+        token, created = Token.objects.update_or_create(
+            contract=contract, defaults=token_data)
+        try:
+            current_token_price = balances_prices_info[contract]['latest_price']
 
-def write_to_database_from_thread(balances):
-    pass
+            current_token_balance = balances[contract]['balance']
+            average_purchase_price = historic_balances_p_l[contract]['token_gross_entry']
+            net_purchase_price = historic_balances_p_l[contract]['token_net_entry']
+            purchased_token_amount = historic_balances_p_l[contract]['purchased_token_balance']
+            sold_token_amount = historic_balances_p_l[contract]['sold_token_balance']
+            total_usd_spent_for_token = historic_balances_p_l[contract]['token_total_spent']
+            total_usd_received_from_selling = historic_balances_p_l[contract]['token_total_sold']
+            token_realized_p_l = historic_balances_p_l[contract]['token_historic_p_l']
+
+            token_total_p_l = tokens_and_wallet_p_l_info[contract]
+            token_unrealized_p_l = token_total_p_l-token_realized_p_l
+
+        except Exception as e:
+            current_token_price = 0
+            current_token_balance
+            average_purchase_price = 0
+            net_purchase_price = 0
+            purchased_token_amount = 0
+            sold_token_amount = 0
+            total_usd_spent_for_token = 0
+            total_usd_received_from_selling = 0
+            token_realized_p_l = 0
+            token_total_p_l = 0
+            token_unrealized_p_l = 0
+            print(f'Exception in save_wallet_info_to_db - {e}')
+        token.last_checked_price_usd = current_token_price
+        token.last_checked_price_timestamp = datetime.now()
+        token.save()
+# create defaults for udpate_or_create
+        wallet_token_defaults = {'balance': current_token_balance, 'average_purchase_price': average_purchase_price,
+                                 'net_purchase_price': net_purchase_price, 'purchased_token_amount': purchased_token_amount,
+                                 'sold_token_amount': sold_token_amount, 'total_usd_spent_for_token': total_usd_spent_for_token,
+                                 'total_usd_received_from_selling': total_usd_received_from_selling,
+                                 'token_realized_p_l': token_realized_p_l, 'token_unrealized_p_l': token_unrealized_p_l,
+                                 'token_total_p_l': token_total_p_l}
+        wallet_token_balance, _created = WalletTokenBalance.objects.update_or_create(
+            wallet=wallet, token=token, defaults=wallet_token_defaults)
+
+    tokens = Token.objects.all().values_list('contract', 'id')
+    token_ids = {contract: id for contract, id in tokens}
+    # print(token_ids)
+
+    # add transactions
+    transactions_list = []
+
+    for hash, tx_details in transactions.items():
+        #create Transaction, TradeTransactionDetails db objects
+        timestamp = tx_details['timeStamp']
+        tx_block = tx_details['blockNumber']
+        tx_fee = tx_details['tx_fee']
+        tx_is_error = tx_details['isError']
+        # received_keys= tx_details.get('received', {}).keys()
+        # sent_keys= tx_details.get('sent', {}).keys()
+        sent_contract = next(iter(tx_details.get('sent', {}).keys()), None)
+        received_contract = next(
+            iter(tx_details.get('received', {}).keys()), None)
+        # print(f'{hash} - sent: {sent_contract}--------- received: {received_contract}')
+        sent_amount, received_amount = None, None
+        if sent_contract is not None:
+            sent_amount = tx_details['sent'][sent_contract]['final_amount']
+        if received_contract is not None:
+            received_amount = tx_details['received'][received_contract]['final_amount']
+        # print(tx_details)
+
+        try:
+            _db_txn_data = {'block': tx_block, 'timestamp': timestamp, 'hash': hash, 'is_error': tx_is_error,
+                            'related_wallet': wallet,
+                            'sent_token_id': token_ids.get(sent_contract), 'sent_amount': sent_amount,
+                            'received_token_id': token_ids.get(received_contract),
+                            'received_amount': received_amount, 'transaction_fee': tx_fee}
+            transaction, created = Transaction.objects.update_or_create(
+                hash=hash, defaults=_db_txn_data)
+            if hash in transactions_details.keys():
+
+                additional_details = transactions_details[hash]
+                price_in_usd = np.format_float_positional(
+                    calculated_historic_prices[hash]['price_in_usd'])
+                price_in_denominated_token = np.format_float_positional(
+                    additional_details['price_in_denominated_token'])
+                trade_transaction_defaults = {'exchanged_token_id':token_ids.get(
+                        additional_details['exchanged_token_contract']),
+                    'exchanged_token_amount':additional_details['exchanged_token_amount'],
+                    'is_receiver':additional_details['is_receiver'],
+                    'denominated_in':additional_details['denominated_in'],
+                    'price_in_denominated_token':price_in_denominated_token,
+                    'price_in_usd':price_in_usd,
+                    'value_of_trade_in_denominated_token':additional_details['value_of_trade_in_eth']}
+                TradeTransactionDetails.objects.update_or_create(
+                    transaction=transaction, defaults=trade_transaction_defaults
+                )
+        except Exception as e:
+            print(e)
+
+    # print(normalized_historic_prices)
+
+    for at_timestamp, eth_price in normalized_historic_prices.items():
+        HistoricalETHPrice.objects.update_or_create(timestamp=at_timestamp, 
+                                                    defaults={'timestamp':at_timestamp, 
+                                                              'price':eth_price})
 
 
 def wallet_search(request):
