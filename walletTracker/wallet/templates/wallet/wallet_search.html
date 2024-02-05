@@ -17,6 +17,10 @@
       <br>
       <input type="submit" value="Submit">
     </form>
+
+
+
+    
     <div>
       {% if wallet_data.data_status == 'ready' %}
         {{ wallet_data.data_status }}
@@ -28,35 +32,40 @@
       <h2>{{ address }}</h2>
     </section>
     <!-- Current Balances and Values -->
-    <section>
-      <h2>Current Balances and Values</h2>
+    <section id="balances">
+      <h2>Wallet Balances</h2>
+      <div><!-- Content filled from context or channels -->
       <ul>
-        {% for currency, balance in balances.items %}
-          <li>{{ currency }}: {{ balance.amount }} (Value: {{ balance.value }})</li>
+
+        {% for token_data in balances.values %}
+        <li>{{ token_data.tokenSymbol }}: {{ token_data.balance }} | {{ token_data.usd_value }} </li>
         {% endfor %}
       </ul>
+      </div>
     </section>
-    <!-- Transaction History -->
-    <section>
-      <h2>Transaction History</h2>
-      <table>
-        <tr>
-          <th>Date</th>
-          <th>Type</th>
-          <th>Amount</th>
-          <th>Currency</th>
-        </tr>
-        {% for transaction in transactions %}
+      
+    <section id="transactions">
+      <div><!-- Content filled from context or channels -->
+        <h2>Transaction History</h2>
+        <table>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Amount</th>
+            <th>Currency</th>
+          </tr>
+          {% for transaction in transactions %}
           <tr>
             <td>{{ transaction.date }}</td>
             <td>{{ transaction.type }}</td>
             <td>{{ transaction.amount }}</td>
             <td>{{ transaction.currency }}</td>
           </tr>
-        {% endfor %}
-      </table>
+          {% endfor %}
+        </table>
+      </div>
     </section>
-    <!-- Total P/L -->
+      <!-- Total P/L -->
     <section>
       <h2>Total P/L</h2>
       <p>{{ total_pl }}</p>
