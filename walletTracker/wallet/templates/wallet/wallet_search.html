@@ -1,4 +1,5 @@
 {% load static %}
+{% load toDate %}
 <!DOCTYPE html>
 <html>
   <head>
@@ -9,7 +10,6 @@
   </head>
   <body onload="start();">
     {% comment %} <h1>Enter Address</h1> {% endcomment %}
-
     <form method="post">
       {% csrf_token %}
       <label for="address">Address:</label>
@@ -17,10 +17,6 @@
       <br>
       <input type="submit" value="Submit">
     </form>
-
-
-
-    
     <div>
       {% if wallet_data.data_status == 'ready' %}
         {{ wallet_data.data_status }}
@@ -34,38 +30,48 @@
     <!-- Current Balances and Values -->
     <section id="balances">
       <h2>Wallet Balances</h2>
-      <div><!-- Content filled from context or channels -->
-      <ul>
-
-        {% for token_data in balances.values %}
-        <li>{{ token_data.tokenSymbol }}: {{ token_data.balance }} | {{ token_data.usd_value }} </li>
-        {% endfor %}
-      </ul>
-      </div>
-    </section>
-      
-    <section id="transactions">
-      <div><!-- Content filled from context or channels -->
-        <h2>Transaction History</h2>
-        <table>
-          <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Amount</th>
-            <th>Currency</th>
-          </tr>
-          {% for transaction in transactions %}
-          <tr>
-            <td>{{ transaction.date }}</td>
-            <td>{{ transaction.type }}</td>
-            <td>{{ transaction.amount }}</td>
-            <td>{{ transaction.currency }}</td>
-          </tr>
+      <div>
+        <ul>
+          {% for token_data in balances.values %}
+            <li id="balance-{{ hash }}">{{ token_data.tokenSymbol }}: {{ token_data.balance }} | {{ token_data.usd_value }}</li>
           {% endfor %}
-        </table>
+        </ul>
       </div>
     </section>
-      <!-- Total P/L -->
+    <!-- Transactions -->
+    <section id="transactions">
+      <h2>Transaction History</h2>
+      {% for transaction in wallet_data.wallet_info.wallet_transactions %}
+        <div id="transaction-{{ transaction.hash }}">
+          <span class="transaction-timestamp">
+            {{ transaction.timestamp|toDate }}
+          </span>
+
+          {% if transaction.sent_amount %}
+          <span class="transaction-sent-amount">
+            -{{ transaction.sent_amount }}
+          </span>
+          <span class="transaction-sent-token">
+            Token: {{ transaction.sent_token_id }}
+          </span>
+          {% endif %}
+          {% if transaction.received_amount %}
+          
+          <span class="transaction-received-amount">
+            +{{ transaction.received_amount }}
+          </span>
+          <span class="transaction-received-token">
+            Token: {{ transaction.received_token_id }}
+          </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+      <button id="expandTransactions">
+      
+        <a href="{% url 'transactions list' wallet_address=address %}">Expand</a>
+      </button>
+    </section>
+    <!-- Total P/L -->
     <section>
       <h2>Total P/L</h2>
       <p>{{ total_pl }}</p>
@@ -75,7 +81,7 @@
             var es = new ReconnectingEventSource("/events/");
             es.onopen = function() {
                 console.log('connected');
-                const currentTime = Date.now(); 
+                const currentTime = Date.now();
                 console.log(currentTime);
             };
             es.onerror = function() {
@@ -91,11 +97,145 @@
                 e = JSON.parse(e.data);
                 console.log('stream error: ' + e.condition + ': ' + e.text);
             }, false);
+
+
+
+
+
+            function handleBalancesMessage(data) {
+                function generateBalancesLiElement(contract, balances_info) {
+                    let liItem = document.createElement('li')
+                    liItem.id = `balance-${contract}`
+                    liItem.innerHTML = `${balances_info['tokenSymbol']}: ${balances_info['balance']} | pending`
+                    return liItem
+                }
+                let tokenBalances = {};
+                console.log('handleBalancesMessage')
+                const balancesDiv = document.querySelector('#balances > div > ul');
+                Object.keys(data).forEach(contract => {
+                    let existingItem = document.getElementById(`balance-${contract}`)
+                    if (data[contract]['balance'] == 0) {
+                        console.log(data[contract]['tokenSymbol'], 'balance is 0')
+                    }
+
+                    if (!existingItem) {
+                        balancesDiv.appendChild(generateBalancesLiElement(contract, data[contract]))
+                    }
+                })
+
+            }
+
+            function handleTransactionsMessage(data) {
+                console.log('handleTransactionsMessage')
+                const transactionsTable = document.querySelector('#transactions > table')
+                const expandButton = document.getElementById('expandTransactions')
+
+                function generateTransactionsLiElement(hash, transaction_info) {
+                    // unfinished
+                    let liItem = document.createElement('li')
+                    liItem.id = `transaction-${hash}`
+                    let dateDiv = document.createElement('div')
+                    dateDiv.innerHTML = new Date(transaction_info['timeStamp'])
+                }
+
+
+            }
+
+            function handleTransactionDetailsMessage(data) {
+                console.log('handleTransactionDetailssMessage')
+            }
+
+            function handleCurrentTokenPricesMessage(data) {
+                console.log('handleCurrentTokenPricesMessage')
+
+                const balancesDiv = document.querySelector('#balances > div > ul');
+                Object.keys(data).forEach(contract => {
+                    let balancesLiItem = document.getElementById(`balance-${contract}`)
+                    if (balancesLiItem) {
+
+                        let existingTokenData = balancesLiItem.innerHTML.split('|')[0]
+
+                        balancesLiItem.innerHTML = `${existingTokenData} | $${data[contract].usd_value}`
+                    }
+
+                })
+            }
+
+            function handleFinalizedUsdPricesMessage(data) {
+                console.log('handleFinalizedUsdPricesMessage')
+            }
+
+            function handleHistoricBalancesPLMessage(data) {
+                console.log('handleHistoricBalancesPLMessage')
+            }
+
+            function handleTokensAndWalletPLMessage(data) {
+                console.log('handleTokensAndWalletPLMessage')
+            }
+
+            const messageHandlers = {
+                'balances': handleBalancesMessage,
+                'transactions': handleTransactionsMessage,
+                'transactions_details': handleTransactionDetailsMessage,
+                'current_token_prices': handleCurrentTokenPricesMessage,
+                'finalized_usd_prices': handleFinalizedUsdPricesMessage,
+                'historic_balances_p_l': handleHistoricBalancesPLMessage,
+                'tokens_and_wallet_p_l_info': handleTokensAndWalletPLMessage,
+            }
             es.addEventListener('message', function(e) {
-                {% comment %} console.log('message: ' + e.data); {% endcomment %}
                 let resp = JSON.parse(e.data)
                 console.log(resp)
+                Object.keys(resp).forEach(data_info => {
+                    console.log(data_info)
+
+                    const handler = messageHandlers[data_info]
+
+                    if (handler) {
+                        handler(resp[data_info])
+                    } else {
+                        console.log('No handler for this type ', data_info)
+                    }
+
+
+                })
+
             }, false);
+
+            function updateBalancesHTML(data) {
+                const balancesDiv = document.querySelector('#balances > div > ul');
+
+                // Check if the item already exists to prevent duplicates
+                let existingItem = document.getElementById(`balance-${data.tokenSymbol}`);
+                if (!existingItem) {
+                    // Create new list item
+                    let listItem = document.createElement('li');
+                    listItem.id = `balance-${data.tokenSymbol}`; // Assign an ID for potential updates
+                    listItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
+                    console.log('no existing item, create')
+                    balancesDiv.appendChild(listItem);
+                } else {
+                    // Update existing item
+                    existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
+                }
+            }
+
+            function updateTransactionsHTML(data) {
+                const balancesDiv = document.querySelector('#balances > div > ul');
+
+                // Check if the item already exists to prevent duplicates
+                let existingItem = document.getElementById(`balance-${data.tokenSymbol}`);
+                if (!existingItem) {
+                    // Create new list item
+                    let listItem = document.createElement('li');
+                    listItem.id = `balance-${data.tokenSymbol}`; // Assign an ID for potential updates
+                    listItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
+                    console.log('no existing item, create')
+                    balancesDiv.appendChild(listItem);
+                } else {
+                    // Update existing item
+                    existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
+                }
+            }
         }
     </script>
   </body>

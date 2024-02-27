@@ -30,6 +30,13 @@ class Token(models.Model):
 
 
 class Transaction(models.Model):
+    TYPE_OF_TRANSACTION_CHOICES = [
+        ("TRADE", "Trade"),
+        ("SEND", "Send"),
+        ("RECEIVE", "Receive"),
+        ("APPROVE", "Approve"),
+    ]
+
     block = models.BigIntegerField(null=False)
     timestamp = models.BigIntegerField(null=False)
     hash = models.CharField(max_length=255, null=False, unique=True)
@@ -43,9 +50,10 @@ class Transaction(models.Model):
         Token, related_name='received_token', on_delete=models.DO_NOTHING, null=True)
     received_amount = models.CharField(max_length=128, null=True)
     transaction_fee = models.CharField(max_length=32, null=True)
+    type_of_transaction = models.CharField(max_length=64, null=True, default=True, choices=TYPE_OF_TRANSACTION_CHOICES)
 
 class TradeTransactionDetails(models.Model):
-    transaction = models.OneToOneField(Transaction, to_field='hash', on_delete=models.CASCADE)
+    transaction = models.OneToOneField(Transaction, to_field='hash', on_delete=models.CASCADE, related_name='trade_details')
     exchanged_token = models.ForeignKey(Token, on_delete=models.DO_NOTHING)
     exchanged_token_amount = models.CharField(max_length=128)
     is_receiver = models.BooleanField(null=True)

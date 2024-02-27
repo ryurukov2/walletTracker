@@ -10,6 +10,7 @@ import math
 import threading
 import time
 from django_eventstream import send_event
+from django.views.generic import ListView
 import aiohttp
 from django.conf import settings
 from django.shortcuts import render, redirect
@@ -140,14 +141,25 @@ def calculate_balances_and_txns(address, combined_data):
     return balances, transactions, tokens_list
 
 
+def query_all_wallet_info_from_database(wallet):
+    wallet_balances = list(WalletTokenBalance.objects.filter(wallet=wallet).order_by("-token_total_p_l").values())
+    # wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet).order_by('-timestamp').values())
+    wallet_transactions = Transaction.objects.filter(related_wallet=wallet).order_by('-timestamp').values()[:20]
+    wallet_trade_details = list(TradeTransactionDetails.objects.filter(transaction__related_wallet=wallet).values())
+    
+    return {'wallet_balances': wallet_balances, 
+            'wallet_transactions': wallet_transactions,
+            'wallet_trade_details':wallet_trade_details}
+
+
 def wallet_data_available_in_db(address_queried):
     db_wallet, created = Wallet.objects.get_or_create(address=address_queried)
-    if not created:
+    if not created and not db_wallet.is_being_calculated:
         # wallet existed already, will add further checks for timestamp after
-
         # return db_wallet
+        wallet_data = query_all_wallet_info_from_database(db_wallet)
 
-        return False
+        return wallet_data
     else:
         db_wallet.is_being_calculated = True
         return False
@@ -677,7 +689,8 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             print(e)
 
     # print(normalized_historic_prices)
-
+    wallet.is_being_calculated = False
+    wallet.save()
     for at_timestamp, eth_price in normalized_historic_prices.items():
         HistoricalETHPrice.objects.update_or_create(timestamp=at_timestamp, 
                                                     defaults={'timestamp':at_timestamp, 
@@ -712,3 +725,13 @@ def wallet_search(request):
         else:
             wallet_data = {"data_status": "ready", "wallet_info": data_from_db}
         return render(request, 'wallet/wallet_search.html', context={'address': address_queried, 'wallet_data': wallet_data})
+
+
+
+class TransactionsListView(ListView):
+    model = Transaction
+    paginate_by = 20
+
+    def get_queryset(self):
+        wallet_address = self.kwargs['wallet_address']
+        return Transaction.objects.filter(related_wallet=wallet_address)
