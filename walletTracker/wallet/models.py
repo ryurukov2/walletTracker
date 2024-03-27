@@ -6,14 +6,36 @@ class Wallet(models.Model):
     address = models.CharField(
         max_length=255, null=False, blank=False, unique=True)
     amount_spent_for_purchases_usd = models.DecimalField(
-        max_digits=19, decimal_places=2, null=True, blank=True)    
+        max_digits=19, decimal_places=2, null=True, blank=True)
     amount_received_from_selling = models.DecimalField(
         max_digits=19, decimal_places=2, null=True, blank=True)
     last_calculated_balance_usd = models.DecimalField(
         max_digits=19, decimal_places=2, null=True, blank=True)
     last_calculated_balance_timestamp = models.DateTimeField(
-        null=True, blank=True)
+        null=True, blank=True, auto_now=True)
+    wallet_realized_p_l = models.DecimalField(
+        max_digits=19, decimal_places=2, null=True, blank=True)
+    wallet_unrealized_p_l = models.DecimalField(
+        max_digits=19, decimal_places=2, null=True, blank=True)
+    wallet_total_p_l = models.DecimalField(
+        max_digits=19, decimal_places=2, null=True, blank=True)
+
     is_being_calculated = models.BooleanField(default=True, null=False)
+
+    def fill_total_wallet_p_l_data(self):
+        wallet_data = WalletTokenBalance.objects.filter(wallet=self).aggregate(models.Sum("token_total_p_l"), models.Sum("token_unrealized_p_l"),
+                                                                               models.Sum("token_realized_p_l"), models.Sum("total_usd_spent_for_token"), models.Sum("total_usd_received_from_selling"), models.Sum("last_calculated_balance_usd"))
+
+        try:
+            self.wallet_realized_p_l = wallet_data['token_realized_p_l__sum']
+            self.wallet_unrealized_p_l = wallet_data['token_unrealized_p_l__sum']
+            self.wallet_total_p_l = wallet_data['token_total_p_l__sum']
+            self.amount_spent_for_purchases_usd = wallet_data['total_usd_spent_for_token__sum']
+            self.amount_received_from_selling = wallet_data['total_usd_received_from_selling__sum']
+            self.last_calculated_balance_usd = wallet_data['last_calculated_balance_usd__sum']
+            self.save()
+        except Exception as e:
+            print(f'Exception occurred in fill_total_wallet_p_l_data: {e}')
 
 
 class Token(models.Model):
@@ -50,17 +72,21 @@ class Transaction(models.Model):
         Token, related_name='received_token', on_delete=models.DO_NOTHING, null=True)
     received_amount = models.CharField(max_length=128, null=True)
     transaction_fee = models.CharField(max_length=32, null=True)
-    type_of_transaction = models.CharField(max_length=64, null=True, default=True, choices=TYPE_OF_TRANSACTION_CHOICES)
+    type_of_transaction = models.CharField(
+        max_length=64, null=True, default=True, choices=TYPE_OF_TRANSACTION_CHOICES)
+
 
 class TradeTransactionDetails(models.Model):
-    transaction = models.OneToOneField(Transaction, to_field='hash', on_delete=models.CASCADE, related_name='trade_details')
+    transaction = models.OneToOneField(
+        Transaction, to_field='hash', on_delete=models.CASCADE, related_name='trade_details')
     exchanged_token = models.ForeignKey(Token, on_delete=models.DO_NOTHING)
     exchanged_token_amount = models.CharField(max_length=128)
     is_receiver = models.BooleanField(null=True)
     denominated_in = models.CharField(max_length=64, null=True)
     price_in_denominated_token = models.CharField(max_length=128, null=True)
     price_in_usd = models.CharField(max_length=128, null=True)
-    value_of_trade_in_denominated_token = models.CharField(max_length=128, null=True)
+    value_of_trade_in_denominated_token = models.CharField(
+        max_length=128, null=True)
     value_of_trade_in_usd = models.CharField(max_length=128, null=True)
 
 
@@ -73,17 +99,16 @@ class WalletTokenBalance(models.Model):
     net_purchase_price = models.CharField(max_length=128, null=False)
     purchased_token_amount = models.CharField(max_length=128, null=False)
     sold_token_amount = models.CharField(max_length=128, null=False)
-    total_usd_spent_for_token = models.DecimalField(max_digits=64, decimal_places=2)
-    total_usd_received_from_selling = models.DecimalField(max_digits=64, decimal_places=2)
+    total_usd_spent_for_token = models.DecimalField(
+        max_digits=64, decimal_places=2)
+    total_usd_received_from_selling = models.DecimalField(
+        max_digits=64, decimal_places=2)
     token_realized_p_l = models.DecimalField(max_digits=64, decimal_places=2)
     token_unrealized_p_l = models.DecimalField(max_digits=64, decimal_places=2)
     token_total_p_l = models.DecimalField(max_digits=64, decimal_places=2)
+    last_calculated_balance_usd = models.DecimalField(
+        max_digits=64, decimal_places=2, default=0)
 
-
-    @property
-    def last_calculated_balance_usd(self):
-        return (self.token.decimal_price * self.balance)
-    
     class Meta:
         unique_together = ('wallet', 'token')
 

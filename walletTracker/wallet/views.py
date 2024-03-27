@@ -28,7 +28,7 @@ def index(request):
 
 
 def combine_records(token_tx, internal_tx, normal_tx):
-    combined_data = {}
+    combined_data = OrderedDict()
 
     def add_entry(entry):
         hash_value = entry['hash']
@@ -42,7 +42,7 @@ def combine_records(token_tx, internal_tx, normal_tx):
 
 
 def calculate_balances_and_txns(address, combined_data):
-    transactions, balances, tokens_list = {}, {}, {}
+    transactions, balances, tokens_list = OrderedDict(), OrderedDict(), OrderedDict()
     eth_decimal = 18
     for hash, transaction_entries in combined_data.items():
         # print(transaction_entries)
@@ -142,24 +142,27 @@ def calculate_balances_and_txns(address, combined_data):
 
 
 def query_all_wallet_info_from_database(wallet):
-    wallet_balances = list(WalletTokenBalance.objects.filter(wallet=wallet).order_by("-token_total_p_l").values())
+    wallet_balances = list(WalletTokenBalance.objects.filter(wallet=wallet).select_related('token').order_by("-token_total_p_l"))
     # wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet).order_by('-timestamp').values())
-    wallet_transactions = Transaction.objects.filter(related_wallet=wallet).order_by('-timestamp').values()[:20]
-    wallet_trade_details = list(TradeTransactionDetails.objects.filter(transaction__related_wallet=wallet).values())
+    wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet).select_related('sent_token', 'received_token').order_by('-timestamp'))[:20]
+    wallet_trade_details = list(TradeTransactionDetails.objects.filter(transaction__related_wallet=wallet))
     
     return {'wallet_balances': wallet_balances, 
             'wallet_transactions': wallet_transactions,
-            'wallet_trade_details':wallet_trade_details}
+            'wallet_trade_details':wallet_trade_details,
+            'wallet_obj': wallet}
 
 
 def wallet_data_available_in_db(address_queried):
     db_wallet, created = Wallet.objects.get_or_create(address=address_queried)
+
     if not created and not db_wallet.is_being_calculated:
         # wallet existed already, will add further checks for timestamp after
         # return db_wallet
         wallet_data = query_all_wallet_info_from_database(db_wallet)
 
         return wallet_data
+        # return False
     else:
         db_wallet.is_being_calculated = True
         return False
@@ -258,7 +261,7 @@ async def gather_historic_prices(session, timestamps_of_eth_trades):
 
 
 async def process_current_prices(prices, balances):
-    balances_prices_info = {}
+    balances_prices_info = OrderedDict()
     total_usd_value = 0
     for contract, price in prices.items():
         if price != "None" and price != None:
@@ -322,7 +325,7 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
 def calculate_purchase_exchange_rate(transactions):
     denominators = {'ETH': 'eth', 'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
                     'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'}
-    average_purchase_prices, transaction_details = {}, {}
+    average_purchase_prices, transaction_details = OrderedDict(), OrderedDict()
     timestamps_of_eth_trades = []
     for tx, moves in transactions.items():
         # print(moves)
@@ -528,6 +531,13 @@ def calculate_total_token_p_l(balances_prices_info, historic_balances_p_l):
     current_tokens_p_l['total_wallet_sold'] = total_wallet_sold
     return current_tokens_p_l
 
+def take_first_n_from_dict(data_dict, n):
+    return_dict = OrderedDict()
+    for id, k in enumerate(data_dict):
+        if id == n: break
+        return_dict[k] = data_dict[k]
+    
+    return return_dict
 
 def wallet_calaulations_thread_worker(address_queried):
     # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
@@ -544,10 +554,10 @@ def wallet_calaulations_thread_worker(address_queried):
         address_queried, combined_data)
 
     # needed during dev as reading from file is quicker than the render and event is sent before render
-    time.sleep(0.1)
-
+    time.sleep(1)
+    
     send_event('test', 'message', data={
-               'balances': balances, 'transactions': transactions})
+               'balances': take_first_n_from_dict(balances, 10), 'transactions': take_first_n_from_dict(transactions, 10)})
 
     # check_current_token_prices(balances)
     # print(calculate_purchase_exchange_rate(transactions))
@@ -609,7 +619,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
         except Exception as e:
             current_token_price = 0
-            current_token_balance
+            current_token_balance = 0
             average_purchase_price = 0
             net_purchase_price = 0
             purchased_token_amount = 0
@@ -624,12 +634,13 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
         token.last_checked_price_timestamp = datetime.now()
         token.save()
 # create defaults for udpate_or_create
+        balance_usd_value = Decimal(current_token_balance) * Decimal(current_token_price)
         wallet_token_defaults = {'balance': current_token_balance, 'average_purchase_price': average_purchase_price,
                                  'net_purchase_price': net_purchase_price, 'purchased_token_amount': purchased_token_amount,
                                  'sold_token_amount': sold_token_amount, 'total_usd_spent_for_token': total_usd_spent_for_token,
                                  'total_usd_received_from_selling': total_usd_received_from_selling,
                                  'token_realized_p_l': token_realized_p_l, 'token_unrealized_p_l': token_unrealized_p_l,
-                                 'token_total_p_l': token_total_p_l}
+                                 'token_total_p_l': token_total_p_l, 'last_calculated_balance_usd': balance_usd_value}
         wallet_token_balance, _created = WalletTokenBalance.objects.update_or_create(
             wallet=wallet, token=token, defaults=wallet_token_defaults)
 
@@ -689,8 +700,12 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             print(e)
 
     # print(normalized_historic_prices)
+    wallet.fill_total_wallet_p_l_data()
     wallet.is_being_calculated = False
+
     wallet.save()
+
+    
     for at_timestamp, eth_price in normalized_historic_prices.items():
         HistoricalETHPrice.objects.update_or_create(timestamp=at_timestamp, 
                                                     defaults={'timestamp':at_timestamp, 

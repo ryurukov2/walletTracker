@@ -7,6 +7,15 @@
     <title>Enter Address</title>
     <script src="{% static 'django_eventstream/eventsource.min.js' %}"></script>
     <script src="{% static 'django_eventstream/reconnecting-eventsource.js' %}"></script>
+    <style>
+        .hidden {
+            display: none;
+        }
+
+        .txElement {
+            background-color: #c72121;
+        }
+    </style>
   </head>
   <body onload="start();">
     {% comment %} <h1>Enter Address</h1> {% endcomment %}
@@ -27,55 +36,48 @@
     <section>
       <h2>{{ address }}</h2>
     </section>
+    <!--Total wallet profit/loss data-->
+    <section>
+      <h2>Wallet statistics</h2>
+      <div>Current USD balance {{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</div>
+      <div>Total P/L {{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</div>
+      <div>Realized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</div>
+    </section>
     <!-- Current Balances and Values -->
     <section id="balances">
       <h2>Wallet Balances</h2>
-      <div>
-        <ul>
-          {% for token_data in balances.values %}
-            <li id="balance-{{ hash }}">{{ token_data.tokenSymbol }}: {{ token_data.balance }} | {{ token_data.usd_value }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      {% for token_data in wallet_data.wallet_info.wallet_balances %}
+        <div class="{% if forloop.counter > 10 %}hidden{% endif %}"
+             id="balance-{{ token_data.token.contract }}">
+          <span class="balance-token-symbol">{{ token_data.token.token_symbol }}</span> : 
+          <span class="balance-token-balance">{{ token_data.balance }}</span> | 
+          <span class="balance-usd-value">{{ token_data.last_calculated_balance_usd }}</span> | 
+          <span class="balance-token-p-l">{{ token_data.token_total_p_l }}</span>
+        </div>
+      {% endfor %}
+      <button onclick="showAllItems()">Show All</button>
     </section>
     <!-- Transactions -->
     <section id="transactions">
       <h2>Transaction History</h2>
       {% for transaction in wallet_data.wallet_info.wallet_transactions %}
         <div id="transaction-{{ transaction.hash }}">
-          <span class="transaction-timestamp">
-            {{ transaction.timestamp|toDate }}
-          </span>
-
+          <span class="transaction-timestamp">{{ transaction.timestamp|toDate }}</span>
           {% if transaction.sent_amount %}
-          <span class="transaction-sent-amount">
-            -{{ transaction.sent_amount }}
-          </span>
-          <span class="transaction-sent-token">
-            Token: {{ transaction.sent_token_id }}
-          </span>
+            <span class="transaction-sent-amount">-{{ transaction.sent_amount }}</span>
+            <span class="transaction-sent-token">Token: {{ transaction.sent_token.token_name }}</span>
           {% endif %}
           {% if transaction.received_amount %}
-          
-          <span class="transaction-received-amount">
-            +{{ transaction.received_amount }}
-          </span>
-          <span class="transaction-received-token">
-            Token: {{ transaction.received_token_id }}
-          </span>
+            <span class="transaction-received-amount">+{{ transaction.received_amount }}</span>
+            <span class="transaction-received-token">Token: {{ transaction.received_token.token_name }}</span>
           {% endif %}
         </div>
       {% endfor %}
       <button id="expandTransactions">
-      
         <a href="{% url 'transactions list' wallet_address=address %}">Expand</a>
       </button>
     </section>
     <!-- Total P/L -->
-    <section>
-      <h2>Total P/L</h2>
-      <p>{{ total_pl }}</p>
-    </section>
     <script>
         var start = function() {
             var es = new ReconnectingEventSource("/events/");
@@ -106,6 +108,7 @@
                 function generateBalancesLiElement(contract, balances_info) {
                     let liItem = document.createElement('li')
                     liItem.id = `balance-${contract}`
+                    liItem.className = "balanceElement"
                     liItem.innerHTML = `${balances_info['tokenSymbol']}: ${balances_info['balance']} | pending`
                     return liItem
                 }
@@ -134,6 +137,7 @@
                     // unfinished
                     let liItem = document.createElement('li')
                     liItem.id = `transaction-${hash}`
+                    liItem.className = "txElement"
                     let dateDiv = document.createElement('div')
                     dateDiv.innerHTML = new Date(transaction_info['timeStamp'])
                 }
@@ -236,6 +240,13 @@
                     existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
                 }
             }
+        }
+
+        function showAllItems() {
+            var items = document.querySelectorAll('#balances li.hidden');
+            items.forEach(function(item) {
+                item.classList.remove('hidden');
+            });
         }
     </script>
   </body>
