@@ -34,7 +34,9 @@ def combine_records(token_tx, internal_tx, normal_tx):
         hash_value = entry['hash']
         hash_list = combined_data.setdefault(hash_value, {})
         hash_list[len(hash_list)] = entry
-    for dataset in [normal_tx, token_tx, internal_tx]:
+
+
+    for dataset in [token_tx, internal_tx, normal_tx]:
         for entry in dataset['result']:
             add_entry(entry)
 
@@ -56,7 +58,7 @@ def calculate_balances_and_txns(address, combined_data):
             tx_moves['blockNumber'] = transaction_entry_data['blockNumber']
             if transaction_entry_data['to'].lower() == address.lower():
                 isReceiver = True
-            else:
+            elif transaction_entry_data['from']:
                 if tx_fee == 0 and transaction_entry_data['gasPrice'] != '' and transaction_entry_data['gasUsed'] != '':
                     # check that fee hasn'transaction_entry_data been set yet, and check that fee numbers exist in dataset
                     tx_fee = int(
@@ -161,17 +163,14 @@ def wallet_data_available_in_db(address_queried):
         # return db_wallet
         wallet_data = query_all_wallet_info_from_database(db_wallet)
 
-        return wallet_data
-        # return False
+        # return wallet_data
+        return False
     else:
         db_wallet.is_being_calculated = True
         return False
 
 
 async def make_fetch(session, url, params={}):
-    # print(time.time())
-    # await asyncio.sleep(2)
-    # return {'status':'asd', 'called_from':called_from}
     try:
         async with session.get(url, params=params) as resp:
             print(resp.status)
@@ -215,6 +214,7 @@ async def gather_current_prices(session, items_list):
     GECKOTERMINAL_BASE_URL = 'https://api.geckoterminal.com/api/v2'
     network = 'eth'
     url = f'{GECKOTERMINAL_BASE_URL}/simple/networks/{network}/token_price/'
+    # TODO make it use the multi network endpoint and get the token images
 
     tasks = [asyncio.create_task(make_fetch(session, url=url+chunk))
              for chunk in chunked_list]
@@ -286,6 +286,10 @@ async def normalize_historic_prices(prices_list):
     return {candle['time']: (float(candle["open"]) + float(candle["close"]))/2 for candle in prices_list}
 
 
+async def gather_token_images(session, tokens):
+    ...
+
+
 async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
 
     # print(api_calls_required)
@@ -294,7 +298,7 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
         # historic_tasks = await gather_historic_prices(session, timestamps_of_eth_trades)
         # historic
         _a = list(filter(lambda x: x != 'eth', balances.keys()))
-        _a.extend(_a)
+        # _a.extend(_a)
         # current_tasks = await gather_current_prices(session, _a)
         tasks = [asyncio.create_task(gather_historic_prices(
             session, timestamps_of_eth_trades)), asyncio.create_task(gather_current_prices(session, _a))]
@@ -312,7 +316,7 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
                 # print(normalized_prices)
             else:
                 print('Result not recognized')
-        # print(balanc++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++es_prices_info)
+        # print(balances_prices_info)
         return balances_prices_info, normalized_prices
 
     # if walletTransactionsTimespan < 7200000:
@@ -553,11 +557,15 @@ def wallet_calaulations_thread_worker(address_queried):
     balances, transactions, tokens_list = calculate_balances_and_txns(
         address_queried, combined_data)
 
+
+    # TODO: write fn to determine transaction type and (?) append to transactions variable (?)
+
+
     # needed during dev as reading from file is quicker than the render and event is sent before render
     time.sleep(1)
-    
+
     send_event('test', 'message', data={
-               'balances': take_first_n_from_dict(balances, 10), 'transactions': take_first_n_from_dict(transactions, 10)})
+               'balances': balances, 'transactions': take_first_n_from_dict(transactions, 10)})
 
     # check_current_token_prices(balances)
     # print(calculate_purchase_exchange_rate(transactions))

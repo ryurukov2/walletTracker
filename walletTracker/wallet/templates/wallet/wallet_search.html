@@ -7,15 +7,8 @@
     <title>Enter Address</title>
     <script src="{% static 'django_eventstream/eventsource.min.js' %}"></script>
     <script src="{% static 'django_eventstream/reconnecting-eventsource.js' %}"></script>
-    <style>
-        .hidden {
-            display: none;
-        }
-
-        .txElement {
-            background-color: #c72121;
-        }
-    </style>
+    
+    <link rel="stylesheet" href="{% static 'walletTracker/css/wallet_search_styles.css' %}">
   </head>
   <body onload="start();">
     {% comment %} <h1>Enter Address</h1> {% endcomment %}
@@ -34,25 +27,40 @@
       {% endif %}
     </div>
     <section>
-      <h2>{{ address }}</h2>
+      <h2 class="result-address">{{ address }}</h2>
     </section>
     <!--Total wallet profit/loss data-->
     <section>
-      <h2>Wallet statistics</h2>
-      <div>Current USD balance {{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</div>
-      <div>Total P/L {{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</div>
-      <div>Realized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</div>
+      <div class="wallet-statistics-container">
+        
+        <h2>Wallet statistics</h2>
+        <div class="current-wallet-usd-balance">Current USD balance {{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</div>
+        <div class="total-wallet-p-l">Total P/L {{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</div>
+        <div class="realized-wallet-p-l">Realized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</div>
+        
+      </div>
     </section>
     <!-- Current Balances and Values -->
     <section id="balances">
       <h2>Wallet Balances</h2>
+      <div class="balance-header">
+        <span class="balance-token-symbol">Token</span> 
+        <span class="balance-token-balance">Token balance</span> 
+        <span class="balance-token-last-checked-price-usd">Last checked token price</span> 
+        <span class="balance-usd-value">USD Value</span> 
+        <span class="balance-token-p-l">Token P/L</span>
+      </div>
       {% for token_data in wallet_data.wallet_info.wallet_balances %}
-        <div class="{% if forloop.counter > 10 %}hidden{% endif %}"
+        <div class="{% if forloop.counter > 10 %}hidden to-be-hidden{% endif %} balance-container"
              id="balance-{{ token_data.token.contract }}">
-          <span class="balance-token-symbol">{{ token_data.token.token_symbol }}</span> : 
-          <span class="balance-token-balance">{{ token_data.balance }}</span> | 
-          <span class="balance-usd-value">{{ token_data.last_calculated_balance_usd }}</span> | 
-          <span class="balance-token-p-l">{{ token_data.token_total_p_l }}</span>
+          <div class="balance-token-container">
+            <img src="" alt="{{ token_data.token.token_symbol }}" class="balance-token-icon">
+            <span class="balance-token-symbol">{{ token_data.token.token_symbol }}</span>
+          </div>
+          <span class="balance-token-balance">{{ token_data.balance }}</span> 
+          <span class="balance-token-last-checked-price-usd">{{ token_data.token.last_checked_price_usd }}</span> 
+          <span class="balance-usd-value">${{ token_data.last_calculated_balance_usd }}</span> 
+          <span class="balance-token-p-l">${{ token_data.token_total_p_l }}</span>
         </div>
       {% endfor %}
       <button onclick="showAllItems()">Show All</button>
@@ -61,15 +69,15 @@
     <section id="transactions">
       <h2>Transaction History</h2>
       {% for transaction in wallet_data.wallet_info.wallet_transactions %}
-        <div id="transaction-{{ transaction.hash }}">
+        <div id="transaction-{{ transaction.hash }}" class="transaction-container">
           <span class="transaction-timestamp">{{ transaction.timestamp|toDate }}</span>
           {% if transaction.sent_amount %}
             <span class="transaction-sent-amount">-{{ transaction.sent_amount }}</span>
-            <span class="transaction-sent-token">Token: {{ transaction.sent_token.token_name }}</span>
+            <span class="transaction-sent-token">Token: {{ transaction.sent_token.token_symbol }}</span>
           {% endif %}
           {% if transaction.received_amount %}
             <span class="transaction-received-amount">+{{ transaction.received_amount }}</span>
-            <span class="transaction-received-token">Token: {{ transaction.received_token.token_name }}</span>
+            <span class="transaction-received-token">Token: {{ transaction.received_token.token_symbol }}</span>
           {% endif %}
         </div>
       {% endfor %}
@@ -243,9 +251,9 @@
         }
 
         function showAllItems() {
-            var items = document.querySelectorAll('#balances li.hidden');
+            var items = document.querySelectorAll('#balances .to-be-hidden');
             items.forEach(function(item) {
-                item.classList.remove('hidden');
+                item.classList.toggle('hidden');
             });
         }
     </script>

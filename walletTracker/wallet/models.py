@@ -43,6 +43,7 @@ class Token(models.Model):
     token_name = models.CharField(max_length=255, null=False)
     token_symbol = models.CharField(max_length=10, null=False)
     token_decimal = models.IntegerField(null=False)
+    token_image_url = models.URLField(max_length=255, null=True, blank=True, default=None)
     last_checked_price_usd = models.CharField(max_length=255, null=True)
     last_checked_price_timestamp = models.DateTimeField(null=True, blank=True)
 
