@@ -50,12 +50,16 @@ def calculate_balances_and_txns(address, combined_data):
         # print(transaction_entries)
         tx_fee = 0
         tx_moves = {}
+        transaction_type = ''
 
         for transaction_entry_data in transaction_entries.values():
             isReceiver = False
             amount_transfered = int(transaction_entry_data['value'])
             tx_moves['timeStamp'] = transaction_entry_data['timeStamp']
             tx_moves['blockNumber'] = transaction_entry_data['blockNumber']
+
+            
+
             if transaction_entry_data['to'].lower() == address.lower():
                 isReceiver = True
             elif transaction_entry_data['from']:
@@ -137,16 +141,27 @@ def calculate_balances_and_txns(address, combined_data):
         balances["eth"]["balance"] = balances["eth"]["balance"] - \
             tx_fee/(10**eth_decimal)
         tx_moves['tx_fee'] = tx_fee/(10**eth_decimal)
+        if 'sent' in tx_moves.keys() and 'received' in tx_moves.keys():
+            transaction_type = 'Trade'
+        elif 'sent' in tx_moves.keys():
+            transaction_type = 'Send'
+        elif 'received' in tx_moves.keys():
+            transaction_type = 'Receive'
+        else:
+            transaction_type = 'Approve'
+
+        tx_moves['transaction_type'] = transaction_type
         # set values in 'transactions'
         transactions[hash] = tx_moves
+
 
     return balances, transactions, tokens_list
 
 
 def query_all_wallet_info_from_database(wallet):
-    wallet_balances = list(WalletTokenBalance.objects.filter(wallet=wallet).select_related('token').order_by("-token_total_p_l"))
+    wallet_balances = list(WalletTokenBalance.objects.filter(wallet=wallet).select_related('token').order_by("-last_calculated_balance_usd"))
     # wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet).order_by('-timestamp').values())
-    wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet).select_related('sent_token', 'received_token').order_by('-timestamp'))[:20]
+    wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet, type_of_transaction__in=['Trade', 'Send', 'Receive']).select_related('sent_token', 'received_token').order_by('-timestamp'))[:20]
     wallet_trade_details = list(TradeTransactionDetails.objects.filter(transaction__related_wallet=wallet))
     
     return {'wallet_balances': wallet_balances, 
@@ -213,20 +228,26 @@ async def gather_current_prices(session, items_list):
 
     GECKOTERMINAL_BASE_URL = 'https://api.geckoterminal.com/api/v2'
     network = 'eth'
-    url = f'{GECKOTERMINAL_BASE_URL}/simple/networks/{network}/token_price/'
+    # url = f'{GECKOTERMINAL_BASE_URL}/simple/networks/{network}/token_price/'
+    url = f'{GECKOTERMINAL_BASE_URL}/networks/{network}/tokens/multi/'
     # TODO make it use the multi network endpoint and get the token images
 
     tasks = [asyncio.create_task(make_fetch(session, url=url+chunk))
              for chunk in chunked_list]
     # all_results = await asyncio.gather(*tasks)
     # return await asyncio.gather(*tasks)
-    results = {}
+    results = []
     for completed_task in asyncio.as_completed(tasks):
         result = await completed_task
-        results.update(result['data']['attributes']['token_prices'])
+        
+        results.extend(result['data'])
+    for att in results:
+        print(att['attributes']['address'])
+    processed = {att['attributes']['address']: {'image_url': att['attributes']['image_url'], 'price_usd': att['attributes']['price_usd']} for att in results}
+
         # print(result)
     # print(results)
-    return {'result_from': 'current', 'result': results}
+    return {'result_from': 'current', 'result': processed}
 
 
 async def gather_historic_prices(session, timestamps_of_eth_trades):
@@ -260,19 +281,24 @@ async def gather_historic_prices(session, timestamps_of_eth_trades):
     return {'result_from': 'historic', 'result': results}
 
 
-async def process_current_prices(prices, balances):
+async def process_current_prices(prices, balances, tokens_list):
     balances_prices_info = OrderedDict()
     total_usd_value = 0
-    for contract, price in prices.items():
-        if price != "None" and price != None:
+    for contract, token_data in prices.items():
+        if token_data['price_usd'] != "None" and token_data['price_usd'] != None:
             usd_value = float(
-                price) * balances[contract]['balance']
-            balances_prices_info[contract] = {'latest_price': price}
+                token_data['price_usd']) * balances[contract]['balance']
+            balances_prices_info[contract] = {'latest_price': token_data['price_usd']}
             balances_prices_info[contract]['usd_value'] = usd_value
             total_usd_value += usd_value
         else:
             balances_prices_info[contract] = {'latest_price': '0'}
             balances_prices_info[contract]['usd_value'] = 0
+        if token_data['image_url'] != 'missing.png':
+            tokens_list[contract].update({'token_image_url': token_data['image_url']})
+
+
+        
     balances_prices_info['total_usd_value'] = total_usd_value
     await sync_to_async(send_event)('test', 'message', data={'current_token_prices': balances_prices_info})
     return balances_prices_info
@@ -290,9 +316,8 @@ async def gather_token_images(session, tokens):
     ...
 
 
-async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
+async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, tokens_list):
 
-    # print(api_calls_required)
     async with aiohttp.ClientSession() as session:
         # print(f'{time.time()} - before before')
         # historic_tasks = await gather_historic_prices(session, timestamps_of_eth_trades)
@@ -309,7 +334,7 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances):
         for completed_task in asyncio.as_completed(tasks):
             result = await completed_task
             if result['result_from'] == 'current':
-                balances_prices_info = await process_current_prices(result['result'], balances)
+                balances_prices_info = await process_current_prices(result['result'], balances, tokens_list)
 
             elif result['result_from'] == 'historic':
                 normalized_prices = await normalize_historic_prices(result['result'])
@@ -576,7 +601,7 @@ def wallet_calaulations_thread_worker(address_queried):
     # print(timestamps_of_eth_trades)
 
     balances_prices_info, normalized_historic_prices = asyncio.run(query_historic_and_current_prices(
-        timestamps_of_eth_trades, balances))
+        timestamps_of_eth_trades, balances, tokens_list))
 
     # match the closest historic price time to each of the txns
     calculated_historic_prices, historic_balances_p_l = match_historic_prices(
@@ -665,6 +690,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
         tx_block = tx_details['blockNumber']
         tx_fee = tx_details['tx_fee']
         tx_is_error = tx_details['isError']
+        transaction_type = tx_details['transaction_type']
         # received_keys= tx_details.get('received', {}).keys()
         # sent_keys= tx_details.get('sent', {}).keys()
         sent_contract = next(iter(tx_details.get('sent', {}).keys()), None)
@@ -683,7 +709,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
                             'related_wallet': wallet,
                             'sent_token_id': token_ids.get(sent_contract), 'sent_amount': sent_amount,
                             'received_token_id': token_ids.get(received_contract),
-                            'received_amount': received_amount, 'transaction_fee': tx_fee}
+                            'received_amount': received_amount, 'transaction_fee': tx_fee, 'type_of_transaction': transaction_type}
             transaction, created = Transaction.objects.update_or_create(
                 hash=hash, defaults=_db_txn_data)
             if hash in transactions_details.keys():

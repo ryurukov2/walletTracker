@@ -8,6 +8,6 @@ def toDate(value):
         # Convert the timestamp (assumed to be in seconds) to a datetime object
         timestamp = int(value)
         converted_date = datetime.datetime.fromtimestamp(timestamp)
-        return converted_date.strftime('%Y-%m-%d %H:%M:%S')
+        return converted_date.strftime('%m/%d/%Y, %H:%M:%S')
     except ValueError:
         return value

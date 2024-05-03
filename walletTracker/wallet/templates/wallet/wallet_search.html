@@ -7,6 +7,7 @@
     <title>Enter Address</title>
     <script src="{% static 'django_eventstream/eventsource.min.js' %}"></script>
     <script src="{% static 'django_eventstream/reconnecting-eventsource.js' %}"></script>
+    <script src="{% static 'walletTracker/js/wallet_search_js.js' %}"></script>
     
     <link rel="stylesheet" href="{% static 'walletTracker/css/wallet_search_styles.css' %}">
   </head>
@@ -31,13 +32,16 @@
     </section>
     <!--Total wallet profit/loss data-->
     <section>
+      <h2>Wallet statistics</h2>
       <div class="wallet-statistics-container">
         
-        <h2>Wallet statistics</h2>
         <div class="current-wallet-usd-balance">Current USD balance {{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</div>
         <div class="total-wallet-p-l">Total P/L {{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</div>
         <div class="realized-wallet-p-l">Realized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</div>
-        
+        <div class="unrealized-wallet-p-l">Unrealized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_unrealized_p_l }}</div>
+        <div class="amount_spent_for_purchases">Amount Spent (USD) {{ wallet_data.wallet_info.wallet_obj.amount_spent_for_purchases_usd }}</div>
+        <div class="amount_received_from_selling">Amount Received from selling (USD) {{ wallet_data.wallet_info.wallet_obj.amount_received_from_selling }}</div>
+      
       </div>
     </section>
     <!-- Current Balances and Values -->
@@ -50,212 +54,56 @@
         <span class="balance-usd-value">USD Value</span> 
         <span class="balance-token-p-l">Token P/L</span>
       </div>
-      {% for token_data in wallet_data.wallet_info.wallet_balances %}
+      <div class='balance-outer-container' id='balance-outer-container'>
+
+        {% for token_data in wallet_data.wallet_info.wallet_balances %}
         <div class="{% if forloop.counter > 10 %}hidden to-be-hidden{% endif %} balance-container"
-             id="balance-{{ token_data.token.contract }}">
+          id="balance-{{ token_data.token.contract }}">
           <div class="balance-token-container">
-            <img src="" alt="{{ token_data.token.token_symbol }}" class="balance-token-icon">
-            <span class="balance-token-symbol">{{ token_data.token.token_symbol }}</span>
+            {% if token_data.token.token_image_url != None %}
+            <img src="{{ token_data.token.token_image_url }}" alt="" class="balance-token-icon">
+            
+            
+            {% endif %}
+            <div class="balance-token-symbol">{{ token_data.token.token_symbol }}</div>
           </div>
           <span class="balance-token-balance">{{ token_data.balance }}</span> 
           <span class="balance-token-last-checked-price-usd">{{ token_data.token.last_checked_price_usd }}</span> 
           <span class="balance-usd-value">${{ token_data.last_calculated_balance_usd }}</span> 
           <span class="balance-token-p-l">${{ token_data.token_total_p_l }}</span>
         </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
       <button onclick="showAllItems()">Show All</button>
     </section>
     <!-- Transactions -->
     <section id="transactions">
       <h2>Transaction History</h2>
+      <div id="wallet-transactions-container">
       {% for transaction in wallet_data.wallet_info.wallet_transactions %}
         <div id="transaction-{{ transaction.hash }}" class="transaction-container">
           <span class="transaction-timestamp">{{ transaction.timestamp|toDate }}</span>
           {% if transaction.sent_amount %}
-            <span class="transaction-sent-amount">-{{ transaction.sent_amount }}</span>
-            <span class="transaction-sent-token">Token: {{ transaction.sent_token.token_symbol }}</span>
+            <div>
+              <span class="transaction-sent-amount">-{{ transaction.sent_amount }}</span>
+              {{ transaction.sent_token.token_symbol }}
+            </div>
           {% endif %}
           {% if transaction.received_amount %}
-            <span class="transaction-received-amount">+{{ transaction.received_amount }}</span>
-            <span class="transaction-received-token">Token: {{ transaction.received_token.token_symbol }}</span>
+            <div>
+              <span class="transaction-received-amount">+{{ transaction.received_amount }}</span>
+              {{ transaction.received_token.token_symbol }}
+            </div>
           {% endif %}
         </div>
       {% endfor %}
-      <button id="expandTransactions">
-        <a href="{% url 'transactions list' wallet_address=address %}">Expand</a>
-      </button>
+      </div>
+
+      <button class="expandTransactions" onclick="location.href = '{% url 'transactions list' wallet_address=address %}'">Expand</button>
     </section>
     <!-- Total P/L -->
     <script>
-        var start = function() {
-            var es = new ReconnectingEventSource("/events/");
-            es.onopen = function() {
-                console.log('connected');
-                const currentTime = Date.now();
-                console.log(currentTime);
-            };
-            es.onerror = function() {
-                console.log('connection error');
-            };
-            es.addEventListener('stream-reset', function(e) {
-                e = JSON.parse(e.data);
-                console.log('stream reset: ' + JSON.stringify(e.channels));
-            }, false);
-            es.addEventListener('stream-error', function(e) {
-                // hard stop
-                es.close();
-                e = JSON.parse(e.data);
-                console.log('stream error: ' + e.condition + ': ' + e.text);
-            }, false);
-
-
-
-
-
-            function handleBalancesMessage(data) {
-                function generateBalancesLiElement(contract, balances_info) {
-                    let liItem = document.createElement('li')
-                    liItem.id = `balance-${contract}`
-                    liItem.className = "balanceElement"
-                    liItem.innerHTML = `${balances_info['tokenSymbol']}: ${balances_info['balance']} | pending`
-                    return liItem
-                }
-                let tokenBalances = {};
-                console.log('handleBalancesMessage')
-                const balancesDiv = document.querySelector('#balances > div > ul');
-                Object.keys(data).forEach(contract => {
-                    let existingItem = document.getElementById(`balance-${contract}`)
-                    if (data[contract]['balance'] == 0) {
-                        console.log(data[contract]['tokenSymbol'], 'balance is 0')
-                    }
-
-                    if (!existingItem) {
-                        balancesDiv.appendChild(generateBalancesLiElement(contract, data[contract]))
-                    }
-                })
-
-            }
-
-            function handleTransactionsMessage(data) {
-                console.log('handleTransactionsMessage')
-                const transactionsTable = document.querySelector('#transactions > table')
-                const expandButton = document.getElementById('expandTransactions')
-
-                function generateTransactionsLiElement(hash, transaction_info) {
-                    // unfinished
-                    let liItem = document.createElement('li')
-                    liItem.id = `transaction-${hash}`
-                    liItem.className = "txElement"
-                    let dateDiv = document.createElement('div')
-                    dateDiv.innerHTML = new Date(transaction_info['timeStamp'])
-                }
-
-
-            }
-
-            function handleTransactionDetailsMessage(data) {
-                console.log('handleTransactionDetailssMessage')
-            }
-
-            function handleCurrentTokenPricesMessage(data) {
-                console.log('handleCurrentTokenPricesMessage')
-
-                const balancesDiv = document.querySelector('#balances > div > ul');
-                Object.keys(data).forEach(contract => {
-                    let balancesLiItem = document.getElementById(`balance-${contract}`)
-                    if (balancesLiItem) {
-
-                        let existingTokenData = balancesLiItem.innerHTML.split('|')[0]
-
-                        balancesLiItem.innerHTML = `${existingTokenData} | $${data[contract].usd_value}`
-                    }
-
-                })
-            }
-
-            function handleFinalizedUsdPricesMessage(data) {
-                console.log('handleFinalizedUsdPricesMessage')
-            }
-
-            function handleHistoricBalancesPLMessage(data) {
-                console.log('handleHistoricBalancesPLMessage')
-            }
-
-            function handleTokensAndWalletPLMessage(data) {
-                console.log('handleTokensAndWalletPLMessage')
-            }
-
-            const messageHandlers = {
-                'balances': handleBalancesMessage,
-                'transactions': handleTransactionsMessage,
-                'transactions_details': handleTransactionDetailsMessage,
-                'current_token_prices': handleCurrentTokenPricesMessage,
-                'finalized_usd_prices': handleFinalizedUsdPricesMessage,
-                'historic_balances_p_l': handleHistoricBalancesPLMessage,
-                'tokens_and_wallet_p_l_info': handleTokensAndWalletPLMessage,
-            }
-            es.addEventListener('message', function(e) {
-                let resp = JSON.parse(e.data)
-                console.log(resp)
-                Object.keys(resp).forEach(data_info => {
-                    console.log(data_info)
-
-                    const handler = messageHandlers[data_info]
-
-                    if (handler) {
-                        handler(resp[data_info])
-                    } else {
-                        console.log('No handler for this type ', data_info)
-                    }
-
-
-                })
-
-            }, false);
-
-            function updateBalancesHTML(data) {
-                const balancesDiv = document.querySelector('#balances > div > ul');
-
-                // Check if the item already exists to prevent duplicates
-                let existingItem = document.getElementById(`balance-${data.tokenSymbol}`);
-                if (!existingItem) {
-                    // Create new list item
-                    let listItem = document.createElement('li');
-                    listItem.id = `balance-${data.tokenSymbol}`; // Assign an ID for potential updates
-                    listItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-                    console.log('no existing item, create')
-                    balancesDiv.appendChild(listItem);
-                } else {
-                    // Update existing item
-                    existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-                }
-            }
-
-            function updateTransactionsHTML(data) {
-                const balancesDiv = document.querySelector('#balances > div > ul');
-
-                // Check if the item already exists to prevent duplicates
-                let existingItem = document.getElementById(`balance-${data.tokenSymbol}`);
-                if (!existingItem) {
-                    // Create new list item
-                    let listItem = document.createElement('li');
-                    listItem.id = `balance-${data.tokenSymbol}`; // Assign an ID for potential updates
-                    listItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-                    console.log('no existing item, create')
-                    balancesDiv.appendChild(listItem);
-                } else {
-                    // Update existing item
-                    existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-                }
-            }
-        }
-
-        function showAllItems() {
-            var items = document.querySelectorAll('#balances .to-be-hidden');
-            items.forEach(function(item) {
-                item.classList.toggle('hidden');
-            });
-        }
+        
     </script>
   </body>
 </html>

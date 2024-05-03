@@ -74,7 +74,7 @@ class Transaction(models.Model):
     received_amount = models.CharField(max_length=128, null=True)
     transaction_fee = models.CharField(max_length=32, null=True)
     type_of_transaction = models.CharField(
-        max_length=64, null=True, default=True, choices=TYPE_OF_TRANSACTION_CHOICES)
+        max_length=64, null=True, default='Trade', choices=TYPE_OF_TRANSACTION_CHOICES)
 
 
 class TradeTransactionDetails(models.Model):

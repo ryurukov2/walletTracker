@@ -41,7 +41,7 @@ section {
 }
 
 .transaction-container {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .balance-token-symbol,
@@ -55,8 +55,12 @@ section {
 .transaction-sent-token,
 .transaction-received-token,
 .balance-token-container {
+    display: inline-flex;
     margin: 10px;
     text-align: center;
+    align-items: center;
+    justify-content: center;
+    align-content: center;
 }
 
 .transaction-sent-amount {
@@ -110,78 +114,40 @@ a {
     display: block;
 }
 
+.balance-token-icon {
+    height: 50%;
+}
 .wallet-statistics-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     background-color: #1e1e1e;
     border-radius: 8px;
     padding: 20px;
     margin-bottom: 20px;
 }
 
-.wallet-statistics-container h2 {
-    margin-top: 0;
-    color: #aad3e6;
-}
 
 .current-wallet-usd-balance,
 .total-wallet-p-l,
-.realized-wallet-p-l {
+.realized-wallet-p-l,
+.unrealized-wallet-p-l,
+.amount_spent_for_purchases,
+.amount_received_from_selling {
     background-color: #262626;
-    margin: 10px 0;
+    margin: 10px;
     padding: 10px;
     border-radius: 5px;
     color: #d1d1d1;
 }
 
 @media (max-width: 768px) {
-    .wallet-statistics-container {
-        padding: 10px;
-    }
 
     .current-wallet-usd-balance,
     .total-wallet-p-l,
-    .realized-wallet-p-l {
-        margin: 8px 0;
-        padding: 8px;
-    }
-}
-
-.result-address {
-    color: #f0b90b;
-    margin-bottom: 20px;
-    display: block;
-}
-
-.wallet-statistics-container {
-    background-color: #1e1e1e;
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 20px;
-}
-
-.wallet-statistics-container h2 {
-    margin-top: 0;
-    color: #aad3e6;
-}
-
-.current-wallet-usd-balance,
-.total-wallet-p-l,
-.realized-wallet-p-l {
-    background-color: #262626;
-    margin: 10px 0;
-    padding: 10px;
-    border-radius: 5px;
-    color: #d1d1d1;
-}
-
-@media (max-width: 768px) {
-    .wallet-statistics-container {
-        padding: 10px;
-    }
-
-    .current-wallet-usd-balance,
-    .total-wallet-p-l,
-    .realized-wallet-p-l {
-        margin: 8px 0;
-        padding: 8px;
+    .realized-wallet-p-l,
+    .unrealized-wallet-p-l,
+    .amount_spent_for_purchases,
+    .amount_received_from_selling  {
+        margin: 8px;
     }
 }
