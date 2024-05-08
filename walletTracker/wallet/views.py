@@ -590,7 +590,7 @@ def wallet_calaulations_thread_worker(address_queried):
     time.sleep(1)
 
     send_event('test', 'message', data={
-               'balances': balances, 'transactions': take_first_n_from_dict(transactions, 10)})
+               'balances': balances, 'transactions': take_first_n_from_dict(transactions, 20)})
 
     # check_current_token_prices(balances)
     # print(calculate_purchase_exchange_rate(transactions))
