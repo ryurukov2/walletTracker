@@ -31,16 +31,15 @@
       <h2 class="result-address">{{ address }}</h2>
     </section>
     <!--Total wallet profit/loss data-->
-    <section>
+    <section id="wallet">
       <h2>Wallet statistics</h2>
       <div class="wallet-statistics-container">
         
-        <div class="current-wallet-usd-balance">Current USD balance {{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</div>
-        <div class="total-wallet-p-l">Total P/L {{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</div>
-        <div class="realized-wallet-p-l">Realized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</div>
-        <div class="unrealized-wallet-p-l">Unrealized P/L {{ wallet_data.wallet_info.wallet_obj.wallet_unrealized_p_l }}</div>
-        <div class="amount_spent_for_purchases">Amount Spent (USD) {{ wallet_data.wallet_info.wallet_obj.amount_spent_for_purchases_usd }}</div>
-        <div class="amount_received_from_selling">Amount Received from selling (USD) {{ wallet_data.wallet_info.wallet_obj.amount_received_from_selling }}</div>
+        <div class="current-wallet-usd-balance">Current USD balance: $<span class='value'>{{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</span></div>
+        <div class="total-wallet-p-l">Total P/L: $<span class="value">{{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</span></div>
+        <div class="realized-wallet-p-l">Realized P/L: $<span class="value">{{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</span></div>
+        <div class="amount_spent_for_purchases">Amount Spent (USD): $<span class="value">{{ wallet_data.wallet_info.wallet_obj.amount_spent_for_purchases_usd }}</span></div>
+        <div class="amount_received_from_selling">Amount Received from selling (USD): $<span class="value">{{ wallet_data.wallet_info.wallet_obj.amount_received_from_selling }}</span></div>
       
       </div>
     </section>
@@ -54,7 +53,7 @@
         <span class="balance-usd-value">USD Value</span> 
         <span class="balance-token-p-l">Token P/L</span>
       </div>
-      <div class='balance-outer-container' id='balance-outer-container'>
+      <div class="balance-outer-container" id="balance-outer-container">
 
         {% for token_data in wallet_data.wallet_info.wallet_balances %}
         <div class="{% if forloop.counter > 10 %}hidden to-be-hidden{% endif %} balance-container"
@@ -68,7 +67,7 @@
             <div class="balance-token-symbol">{{ token_data.token.token_symbol }}</div>
           </div>
           <span class="balance-token-balance">{{ token_data.balance }}</span> 
-          <span class="balance-token-last-checked-price-usd">{{ token_data.token.last_checked_price_usd }}</span> 
+          <span class="balance-token-last-checked-price-usd">${{ token_data.token.last_checked_price_usd }}</span> 
           <span class="balance-usd-value">${{ token_data.last_calculated_balance_usd }}</span> 
           <span class="balance-token-p-l">${{ token_data.token_total_p_l }}</span>
         </div>
@@ -103,7 +102,7 @@
     </section>
     <!-- Total P/L -->
     <script>
-        
+        const queriedAddress = '{{ address|escapejs }}'
     </script>
   </body>
 </html>

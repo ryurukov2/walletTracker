@@ -15,8 +15,6 @@ class Wallet(models.Model):
         null=True, blank=True, auto_now=True)
     wallet_realized_p_l = models.DecimalField(
         max_digits=19, decimal_places=2, null=True, blank=True)
-    wallet_unrealized_p_l = models.DecimalField(
-        max_digits=19, decimal_places=2, null=True, blank=True)
     wallet_total_p_l = models.DecimalField(
         max_digits=19, decimal_places=2, null=True, blank=True)
 
@@ -28,7 +26,6 @@ class Wallet(models.Model):
 
         try:
             self.wallet_realized_p_l = wallet_data['token_realized_p_l__sum']
-            self.wallet_unrealized_p_l = wallet_data['token_unrealized_p_l__sum']
             self.wallet_total_p_l = wallet_data['token_total_p_l__sum']
             self.amount_spent_for_purchases_usd = wallet_data['total_usd_spent_for_token__sum']
             self.amount_received_from_selling = wallet_data['total_usd_received_from_selling__sum']

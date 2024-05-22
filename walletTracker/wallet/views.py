@@ -44,6 +44,8 @@ def combine_records(token_tx, internal_tx, normal_tx):
 
 
 def calculate_balances_and_txns(address, combined_data):
+    'Parse all transactions and return transactions, balances, token_list'
+
     transactions, balances, tokens_list = OrderedDict(), OrderedDict(), OrderedDict()
     eth_decimal = 18
     for hash, transaction_entries in combined_data.items():
@@ -154,8 +156,8 @@ def calculate_balances_and_txns(address, combined_data):
         # set values in 'transactions'
         transactions[hash] = tx_moves
 
-
-    return balances, transactions, tokens_list
+    sorted_transactions = dict(sorted(transactions.items(), key=lambda item: -1*int(item[1]['timeStamp'])))
+    return balances, sorted_transactions, tokens_list
 
 
 def query_all_wallet_info_from_database(wallet):
@@ -296,6 +298,7 @@ async def process_current_prices(prices, balances, tokens_list):
             balances_prices_info[contract]['usd_value'] = 0
         if token_data['image_url'] != 'missing.png':
             tokens_list[contract].update({'token_image_url': token_data['image_url']})
+            balances_prices_info[contract].update({'token_image_url': token_data['image_url']})
 
 
         
@@ -354,10 +357,10 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, 
 def calculate_purchase_exchange_rate(transactions):
     denominators = {'ETH': 'eth', 'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
                     'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'}
-    average_purchase_prices, transaction_details = OrderedDict(), OrderedDict()
+    
+    transaction_details = OrderedDict()
     timestamps_of_eth_trades = []
     for tx, moves in transactions.items():
-        # print(moves)
         price_in_denominated_token = 0
         denominated_in = ''
         traded_token = ''
@@ -371,14 +374,11 @@ def calculate_purchase_exchange_rate(transactions):
             sent_contract, sent_info = next(iter(moves['sent'].items()))
             transaction_timestamp = moves['timeStamp']
             transaction_block = moves['blockNumber']
-            # print(sent_contract, sent_info)
-            # for moves_info in [moves['received'], moves['sent']]:
-            # print(moves_info)
+ 
             # check if the wallet 'bought' or 'sold' a currency to determine which one the denominator should be
             if received_contract in denominators.values():
                 # sold
                 eth_traded = received_info['final_amount']
-                # 0xba1b8cb8d81cf276c941788c1efd6680e85fb817591cfa900aec3cb124fe3ab4 throws error because sent amount shows as 0eth. some data is missing, there's some error in calculate_balances_and_txns
                 traded_amount = sent_info['final_amount']
                 price_in_denominated_token = eth_traded / \
                     traded_amount
@@ -408,10 +408,6 @@ def calculate_purchase_exchange_rate(transactions):
             elif denominated_in == denominators['USDT'] or denominated_in == denominators['USDC']:
                 price_of_token_in_usd = price_in_denominated_token
 
-            # moves['price_in_denominated_token'] = price_in_denominated_token
-            # moves['denominated_in'] = denominated_in
-            # moves['price_in_usd'] = price_of_token_in_usd
-            # print(transaction_details)
             _txn_details_info = {'timeStamp': transaction_timestamp,
                                  'blockNumber': transaction_block,
                                  'exchanged_token_symbol': traded_token_symbol,
@@ -428,6 +424,7 @@ def calculate_purchase_exchange_rate(transactions):
 
 
 def find_closest_to(price_list, timestamp):
+    'Returns the entry closest to a target value from a list'
     pos = bisect_left(price_list, timestamp)
     if pos == 0:
         return price_list[0]
@@ -558,8 +555,18 @@ def calculate_total_token_p_l(balances_prices_info, historic_balances_p_l):
     current_tokens_p_l['total'] = total_wallet_p_l
     current_tokens_p_l['total_wallet_spent'] = total_wallet_spent
     current_tokens_p_l['total_wallet_sold'] = total_wallet_sold
+    current_tokens_p_l['wallet_realized_p_l'] = total_wallet_sold - total_wallet_spent
+    current_tokens_p_l['total_usd_value'] = balances_prices_info['total_usd_value']
     return current_tokens_p_l
 
+def filter_out_transaction_type(data_dict, type):
+    'Returns a filtered dictionary where all transactions of the selected type are removed.'
+    return_dict = dict()
+    for hash, data in data_dict.items():
+        if data["transaction_type"] == type:
+            continue
+        return_dict[hash]=data
+    return return_dict
 def take_first_n_from_dict(data_dict, n):
     return_dict = OrderedDict()
     for id, k in enumerate(data_dict):
@@ -567,6 +574,15 @@ def take_first_n_from_dict(data_dict, n):
         return_dict[k] = data_dict[k]
     
     return return_dict
+
+def take_last_n_from_dict(data_dict, n):
+    return_dict = OrderedDict()
+    for id, k in enumerate(data_dict):
+        if id < len(data_dict) - n: continue
+        return_dict[k] = data_dict[k]
+    
+    return return_dict
+
 
 def wallet_calaulations_thread_worker(address_queried):
     # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
@@ -590,7 +606,7 @@ def wallet_calaulations_thread_worker(address_queried):
     time.sleep(1)
 
     send_event('test', 'message', data={
-               'balances': balances, 'transactions': take_first_n_from_dict(transactions, 20)})
+               'balances': balances, 'transactions': filter_out_transaction_type(take_first_n_from_dict(transactions, 20), "Approve")})
 
     # check_current_token_prices(balances)
     # print(calculate_purchase_exchange_rate(transactions))
@@ -606,8 +622,6 @@ def wallet_calaulations_thread_worker(address_queried):
     # match the closest historic price time to each of the txns
     calculated_historic_prices, historic_balances_p_l = match_historic_prices(
         normalized_historic_prices, transactions_details)
-    # calctd = open('calctd.txt', 'a')
-    # calctd.write(json.dumps(calculated_historic_prices))
     # send message
     send_event('test', 'message', data={
                'finalized_usd_prices': calculated_historic_prices})
@@ -648,7 +662,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             token_realized_p_l = historic_balances_p_l[contract]['token_historic_p_l']
 
             token_total_p_l = tokens_and_wallet_p_l_info[contract]
-            token_unrealized_p_l = token_total_p_l-token_realized_p_l
+
 
         except Exception as e:
             current_token_price = 0
@@ -661,28 +675,23 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             total_usd_received_from_selling = 0
             token_realized_p_l = 0
             token_total_p_l = 0
-            token_unrealized_p_l = 0
             print(f'Exception in save_wallet_info_to_db - {e}')
         token.last_checked_price_usd = current_token_price
         token.last_checked_price_timestamp = datetime.now()
         token.save()
-# create defaults for udpate_or_create
+        # create defaults for udpate_or_create
         balance_usd_value = Decimal(current_token_balance) * Decimal(current_token_price)
         wallet_token_defaults = {'balance': current_token_balance, 'average_purchase_price': average_purchase_price,
                                  'net_purchase_price': net_purchase_price, 'purchased_token_amount': purchased_token_amount,
                                  'sold_token_amount': sold_token_amount, 'total_usd_spent_for_token': total_usd_spent_for_token,
                                  'total_usd_received_from_selling': total_usd_received_from_selling,
-                                 'token_realized_p_l': token_realized_p_l, 'token_unrealized_p_l': token_unrealized_p_l,
+                                 'token_realized_p_l': token_realized_p_l,
                                  'token_total_p_l': token_total_p_l, 'last_calculated_balance_usd': balance_usd_value}
         wallet_token_balance, _created = WalletTokenBalance.objects.update_or_create(
             wallet=wallet, token=token, defaults=wallet_token_defaults)
 
     tokens = Token.objects.all().values_list('contract', 'id')
     token_ids = {contract: id for contract, id in tokens}
-    # print(token_ids)
-
-    # add transactions
-    transactions_list = []
 
     for hash, tx_details in transactions.items():
         #create Transaction, TradeTransactionDetails db objects

@@ -1,4 +1,8 @@
 var start = function () {
+  // global variables from wallet_search template
+  console.log(queriedAddress)
+
+  // Establishes channels connection
   var es = new ReconnectingEventSource("/events/");
   es.onopen = function () {
     console.log("connected");
@@ -28,6 +32,7 @@ var start = function () {
   );
 
   function handleBalancesMessage(data) {
+    // Parses the balances object sent via channels and generates the HTML to display them
     function createBalanceEntry(hash, tdata, extraClass) {
       let html = "";
       html += `
@@ -61,6 +66,7 @@ var start = function () {
   }
 
   function handleTransactionsMessage(data) {
+    // Parses the transactions object sent via channels and generates HTML to display them
     console.log("handleTransactionsMessage");
 
     function createTransactionsEntry(hash, transaction_info) {
@@ -115,6 +121,7 @@ var start = function () {
   }
 
   function handleCurrentTokenPricesMessage(data) {
+    // Parses the current token prices object sent via channels and adds the current prices to the already created balances entries
     console.log("handleCurrentTokenPricesMessage");
 
     const balancesDiv = document.querySelector("#balances > div > ul");
@@ -125,17 +132,23 @@ var start = function () {
       let lastCheckedDiv = document.querySelector(
         `#balance-${contract} > .balance-token-last-checked-price-usd`
       );
+      let iconElement = document.querySelector(`#balance-${contract} .balance-token-icon`);
       if (balanceDiv) {
-        balanceDiv.innerHTML = `${data[contract].usd_value}`;
+        balanceDiv.innerHTML = `$${parseFloat(data[contract]?.usd_value).toFixed(2)}`;
       }
       if (lastCheckedDiv) {
-        lastCheckedDiv.innerHTML = `${data[contract].latest_price}`;
+        lastCheckedDiv.innerHTML = `$${data[contract]?.latest_price}`;
+      }
+      if (iconElement && data[contract].token_image_url){
+        iconElement.src = data[contract].token_image_url;
       }
     });
   }
 
   function handleFinalizedUsdPricesMessage(data) {
     console.log("handleFinalizedUsdPricesMessage");
+
+
   }
 
   function handleHistoricBalancesPLMessage(data) {
@@ -144,17 +157,25 @@ var start = function () {
 
   function handleTokensAndWalletPLMessage(data) {
     console.log("handleTokensAndWalletPLMessage");
+    const elementQueries = {
+      'total': 'total-wallet-p-l',
+      'total_wallet_sold': 'amount_received_from_selling',
+      'total_wallet_spent': 'amount_spent_for_purchases',
+      'wallet_realized_p_l': 'realized-wallet-p-l',
+      'total_usd_value': 'current-wallet-usd-balance'
+    }
     Object.keys(data).forEach((contract) => {
-      if (contract == "total") {
-      } else if (contract == "total_wallet_sold") {
-      } else if (contract == "total_") {
-      }
+      if(contract in elementQueries){
+        const elementToUpdate = document.querySelector(`.${elementQueries[contract]} > .value`)
+        elementToUpdate.innerHTML = `${parseFloat(data[contract].toFixed(2))}`
+      }else{
       let tokenPLDiv = document.querySelector(
         `#balance-${contract} > .balance-token-p-l`
       );
       if (tokenPLDiv && data[contract]) {
-        tokenPLDiv.innerHTML = `${data[contract]}`;
+        tokenPLDiv.innerHTML = `$${parseFloat(data[contract]).toFixed(2)}`;
       }
+    }
     });
   }
 
@@ -187,41 +208,6 @@ var start = function () {
     false
   );
 
-  function updateBalancesHTML(data) {
-    const balancesDiv = document.querySelector("#balances > div > ul");
-
-    // Check if the item already exists to prevent duplicates
-    let existingItem = document.getElementById(`balance-${data.tokenSymbol}`);
-    if (!existingItem) {
-      // Create new list item
-      let listItem = document.createElement("li");
-      listItem.id = `balance-${data.tokenSymbol}`; // Assign an ID for potential updates
-      listItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-      console.log("no existing item, create");
-      balancesDiv.appendChild(listItem);
-    } else {
-      // Update existing item
-      existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-    }
-  }
-
-  function updateTransactionsHTML(data) {
-    const balancesDiv = document.querySelector("#balances > div > ul");
-
-    // Check if the item already exists to prevent duplicates
-    let existingItem = document.getElementById(`balance-${data.tokenSymbol}`);
-    if (!existingItem) {
-      // Create new list item
-      let listItem = document.createElement("li");
-      listItem.id = `balance-${data.tokenSymbol}`; // Assign an ID for potential updates
-      listItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-      console.log("no existing item, create");
-      balancesDiv.appendChild(listItem);
-    } else {
-      // Update existing item
-      existingItem.innerHTML = `${data.tokenSymbol}: ${data.balance} | ${data.usd_value}`;
-    }
-  }
 };
 
 function showAllItems() {
