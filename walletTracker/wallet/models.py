@@ -21,7 +21,7 @@ class Wallet(models.Model):
     is_being_calculated = models.BooleanField(default=True, null=False)
 
     def fill_total_wallet_p_l_data(self):
-        wallet_data = WalletTokenBalance.objects.filter(wallet=self).aggregate(models.Sum("token_total_p_l"), models.Sum("token_unrealized_p_l"),
+        wallet_data = WalletTokenBalance.objects.filter(wallet=self).aggregate(models.Sum("token_total_p_l"),
                                                                                models.Sum("token_realized_p_l"), models.Sum("total_usd_spent_for_token"), models.Sum("total_usd_received_from_selling"), models.Sum("last_calculated_balance_usd"))
 
         try:
@@ -102,7 +102,6 @@ class WalletTokenBalance(models.Model):
     total_usd_received_from_selling = models.DecimalField(
         max_digits=64, decimal_places=2)
     token_realized_p_l = models.DecimalField(max_digits=64, decimal_places=2)
-    token_unrealized_p_l = models.DecimalField(max_digits=64, decimal_places=2)
     token_total_p_l = models.DecimalField(max_digits=64, decimal_places=2)
     last_calculated_balance_usd = models.DecimalField(
         max_digits=64, decimal_places=2, default=0)

@@ -97,7 +97,7 @@ def calculate_balances_and_txns(address, combined_data):
                 'token_decimal': token_decimal,
                 'token_name': token_name
             }
-            if token_contract not in tokens_list.keys() and token_contract != 'eth':
+            if token_contract not in tokens_list.keys():
                 token_info = {
                     'contract': token_contract,
                     'token_symbol': token_symbol,
@@ -172,19 +172,6 @@ def query_all_wallet_info_from_database(wallet):
             'wallet_obj': wallet}
 
 
-def wallet_data_available_in_db(address_queried):
-    db_wallet, created = Wallet.objects.get_or_create(address=address_queried)
-
-    if not created and not db_wallet.is_being_calculated:
-        # wallet existed already, will add further checks for timestamp after
-        # return db_wallet
-        wallet_data = query_all_wallet_info_from_database(db_wallet)
-
-        # return wallet_data
-        return False
-    else:
-        db_wallet.is_being_calculated = True
-        return False
 
 
 async def make_fetch(session, url, params={}):
@@ -216,36 +203,49 @@ async def initial_etherscan_api_request_tasks(address_queried):
     return datasets_list
 
 
-async def gather_current_prices(session, items_list):
 
-    # Function to split the list into chunks of 30 items
-
+async def gather_current_prices(session, items_list: list):
+    'query the current values of the balances in the wallet'
     def chunks(lst, n):
+        'split a list into chunks of n items'
         for i in range(0, len(lst), n):
             yield ','.join(lst[i:i + n])
 
-    # Splitting the list into chunks of 30
-    # items_list.remove('eth')
+    tasks = []
+    # if there is ETH balance in the wallet, create the task since it has a different url
+    if 'eth' in items_list:
+        cryptocompare_eth_url = 'https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD'
+        tasks.append(asyncio.create_task(make_fetch(session, cryptocompare_eth_url)))
+        items_list.remove('eth')
+
+    
     chunked_list = list(chunks(items_list, 30))
 
     GECKOTERMINAL_BASE_URL = 'https://api.geckoterminal.com/api/v2'
     network = 'eth'
     # url = f'{GECKOTERMINAL_BASE_URL}/simple/networks/{network}/token_price/'
-    url = f'{GECKOTERMINAL_BASE_URL}/networks/{network}/tokens/multi/'
-    # TODO make it use the multi network endpoint and get the token images
+    gecko_url = f'{GECKOTERMINAL_BASE_URL}/networks/{network}/tokens/multi/'
 
-    tasks = [asyncio.create_task(make_fetch(session, url=url+chunk))
-             for chunk in chunked_list]
+    tasks.extend([asyncio.create_task(make_fetch(session, url=gecko_url+chunk))
+             for chunk in chunked_list])
+    
+    
     # all_results = await asyncio.gather(*tasks)
     # return await asyncio.gather(*tasks)
     results = []
+    processed = {}
     for completed_task in asyncio.as_completed(tasks):
         result = await completed_task
         
-        results.extend(result['data'])
-    for att in results:
-        print(att['attributes']['address'])
-    processed = {att['attributes']['address']: {'image_url': att['attributes']['image_url'], 'price_usd': att['attributes']['price_usd']} for att in results}
+        if 'USD' in result:
+            # means it is the ETH price, which has different layout - {USD:$USD}
+            # image_url is missing.png for now because that's the default for the api that also provides the images
+            processed.update({'eth': {'image_url': 'missing.png', 'price_usd': result['USD']}})
+
+        if 'data' in result:
+            # means it is one of the non eth batches
+            results.extend(result['data'])
+    processed.update({att['attributes']['address']: {'image_url': att['attributes']['image_url'], 'price_usd': att['attributes']['price_usd']} for att in results})
 
         # print(result)
     # print(results)
@@ -253,6 +253,7 @@ async def gather_current_prices(session, items_list):
 
 
 async def gather_historic_prices(session, timestamps_of_eth_trades):
+    'query the prices of ETH from the start to the end of the wallet transactions'
     timeFrom = int(min(timestamps_of_eth_trades))
     timeTo = int(max(timestamps_of_eth_trades))
     walletTransactionsTimespan = timeTo - timeFrom
@@ -277,7 +278,7 @@ async def gather_historic_prices(session, timestamps_of_eth_trades):
         results = [*results, *result["Data"]["Data"]]
         # print(time.time())
         # print(result)
-    await asyncio.sleep(1)
+    # await asyncio.sleep(1)
     # f = open('historic_results.txt', 'a')
     # f.write(json.dumps(results))
     return {'result_from': 'historic', 'result': results}
@@ -307,29 +308,19 @@ async def process_current_prices(prices, balances, tokens_list):
     return balances_prices_info
 
 
-async def process_historic_prices(prices, transaction_details):
-    pass
-
 
 async def normalize_historic_prices(prices_list):
     return {candle['time']: (float(candle["open"]) + float(candle["close"]))/2 for candle in prices_list}
 
 
-async def gather_token_images(session, tokens):
-    ...
-
-
 async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, tokens_list):
-
+    
     async with aiohttp.ClientSession() as session:
-        # print(f'{time.time()} - before before')
-        # historic_tasks = await gather_historic_prices(session, timestamps_of_eth_trades)
-        # historic
         _a = list(filter(lambda x: x != 'eth', balances.keys()))
-        # _a.extend(_a)
+        
         # current_tasks = await gather_current_prices(session, _a)
         tasks = [asyncio.create_task(gather_historic_prices(
-            session, timestamps_of_eth_trades)), asyncio.create_task(gather_current_prices(session, _a))]
+            session, timestamps_of_eth_trades)), asyncio.create_task(gather_current_prices(session, list(balances.keys())))]
         # _r = await asyncio.gather(*tasks)
         # print(_r)
 
@@ -439,7 +430,7 @@ def find_closest_to(price_list, timestamp):
 
 
 def match_historic_prices(historic_prices, transaction_details):
-    # for each transaction where price is pending, get timestamp and find closest value in prices list
+    'for each transaction where price is pending, get timestamp and find closest value in prices list'
     list_of_timestamps = list(historic_prices.keys())
     calculated_transaction_rates = OrderedDict()
     tokens_p_l = OrderedDict()
@@ -584,57 +575,7 @@ def take_last_n_from_dict(data_dict, n):
     return return_dict
 
 
-def wallet_calaulations_thread_worker(address_queried):
-    # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
-    # combined_data = combine_records(*datasets_list)
 
-    tokentx = json.loads(
-        open(os.path.join(settings.BASE_DIR, 'tokentx.txt')).read())
-    txlist = json.loads(
-        open(os.path.join(settings.BASE_DIR, 'txlist.txt')).read())
-    txlistinternal = json.loads(
-        open(os.path.join(settings.BASE_DIR, 'txlistinternal.txt')).read())
-    combined_data = combine_records(tokentx, txlist, txlistinternal)
-    balances, transactions, tokens_list = calculate_balances_and_txns(
-        address_queried, combined_data)
-
-
-    # TODO: write fn to determine transaction type and (?) append to transactions variable (?)
-
-
-    # needed during dev as reading from file is quicker than the render and event is sent before render
-    time.sleep(1)
-
-    send_event('test', 'message', data={
-               'balances': balances, 'transactions': filter_out_transaction_type(take_first_n_from_dict(transactions, 20), "Approve")})
-
-    # check_current_token_prices(balances)
-    # print(calculate_purchase_exchange_rate(transactions))
-    transactions_details, timestamps_of_eth_trades = calculate_purchase_exchange_rate(
-        transactions)
-    send_event('test', 'message', data={
-               'transactions_details': transactions_details})
-    # print(timestamps_of_eth_trades)
-
-    balances_prices_info, normalized_historic_prices = asyncio.run(query_historic_and_current_prices(
-        timestamps_of_eth_trades, balances, tokens_list))
-
-    # match the closest historic price time to each of the txns
-    calculated_historic_prices, historic_balances_p_l = match_historic_prices(
-        normalized_historic_prices, transactions_details)
-    # send message
-    send_event('test', 'message', data={
-               'finalized_usd_prices': calculated_historic_prices})
-    send_event('test', 'message', data={
-               'historic_balances_p_l': historic_balances_p_l})
-    # send_event('test', 'message', data={'balances_prices_info': balances_prices_info})
-    tokens_and_wallet_p_l_info = calculate_total_token_p_l(
-        balances_prices_info, historic_balances_p_l)
-    send_event('test', 'message', data={
-               'tokens_and_wallet_p_l_info': tokens_and_wallet_p_l_info})
-    # write to db both balances and historic
-    save_wallet_info_to_db(address_queried, balances, transactions, transactions_details, balances_prices_info,
-                           normalized_historic_prices, calculated_historic_prices, historic_balances_p_l, tokens_and_wallet_p_l_info, tokens_list)
 
 
 def save_wallet_info_to_db(address_queried, balances, transactions,
@@ -644,7 +585,6 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
-
     for contract, token_data in tokens_list.items():
         #create Token, WalletTokenBalance objects
         token, created = Token.objects.update_or_create(
@@ -687,6 +627,8 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
                                  'total_usd_received_from_selling': total_usd_received_from_selling,
                                  'token_realized_p_l': token_realized_p_l,
                                  'token_total_p_l': token_total_p_l, 'last_calculated_balance_usd': balance_usd_value}
+        
+
         wallet_token_balance, _created = WalletTokenBalance.objects.update_or_create(
             wallet=wallet, token=token, defaults=wallet_token_defaults)
 
@@ -754,6 +696,72 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
                                                     defaults={'timestamp':at_timestamp, 
                                                               'price':eth_price})
 
+
+
+def wallet_calaulations_thread_worker(address_queried):
+    # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
+    # combined_data = combine_records(*datasets_list)
+
+    tokentx = json.loads(
+        open(os.path.join(settings.BASE_DIR, 'tokentx.txt')).read())
+    txlist = json.loads(
+        open(os.path.join(settings.BASE_DIR, 'txlist.txt')).read())
+    txlistinternal = json.loads(
+        open(os.path.join(settings.BASE_DIR, 'txlistinternal.txt')).read())
+    combined_data = combine_records(tokentx, txlist, txlistinternal)
+    balances, transactions, tokens_list = calculate_balances_and_txns(
+        address_queried, combined_data)
+
+
+
+    # needed during dev as reading from file is quicker than the render and event is sent before render
+    time.sleep(1)
+
+    send_event('test', 'message', data={
+               'balances': balances, 'transactions': filter_out_transaction_type(take_first_n_from_dict(transactions, 20), "Approve")})
+
+    # check_current_token_prices(balances)
+    # print(calculate_purchase_exchange_rate(transactions))
+    transactions_details, timestamps_of_eth_trades = calculate_purchase_exchange_rate(
+        transactions)
+    send_event('test', 'message', data={
+               'transactions_details': transactions_details})
+    # print(timestamps_of_eth_trades)
+
+    balances_prices_info, normalized_historic_prices = asyncio.run(query_historic_and_current_prices(
+        timestamps_of_eth_trades, balances, tokens_list))
+
+    # match the closest historic price time to each of the txns
+    calculated_historic_prices, historic_balances_p_l = match_historic_prices(
+        normalized_historic_prices, transactions_details)
+    # send message
+    send_event('test', 'message', data={
+               'finalized_usd_prices': calculated_historic_prices})
+    send_event('test', 'message', data={
+               'historic_balances_p_l': historic_balances_p_l})
+    # send_event('test', 'message', data={'balances_prices_info': balances_prices_info})
+    tokens_and_wallet_p_l_info = calculate_total_token_p_l(
+        balances_prices_info, historic_balances_p_l)
+    send_event('test', 'message', data={
+               'tokens_and_wallet_p_l_info': tokens_and_wallet_p_l_info})
+    # write to db both balances and historic
+    save_wallet_info_to_db(address_queried, balances, transactions, transactions_details, balances_prices_info,
+                           normalized_historic_prices, calculated_historic_prices, historic_balances_p_l, tokens_and_wallet_p_l_info, tokens_list)
+
+
+def wallet_data_available_in_db(address_queried):
+    db_wallet, created = Wallet.objects.get_or_create(address=address_queried)
+
+    if not created and not db_wallet.is_being_calculated:
+        # wallet existed already, will add further checks for timestamp after
+        # return db_wallet
+        wallet_data = query_all_wallet_info_from_database(db_wallet)
+
+        # return wallet_data
+        return False
+    else:
+        db_wallet.is_being_calculated = True
+        return False
 
 def wallet_search(request):
     if request.method == 'POST':
