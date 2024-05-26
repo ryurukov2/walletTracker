@@ -1,3 +1,4 @@
+import traceback
 import numpy as np
 import asyncio
 from bisect import bisect_left
@@ -365,7 +366,7 @@ def calculate_purchase_exchange_rate(transactions):
             sent_contract, sent_info = next(iter(moves['sent'].items()))
             transaction_timestamp = moves['timeStamp']
             transaction_block = moves['blockNumber']
- 
+
             # check if the wallet 'bought' or 'sold' a currency to determine which one the denominator should be
             if received_contract in denominators.values():
                 # sold
@@ -387,7 +388,6 @@ def calculate_purchase_exchange_rate(transactions):
                 traded_token = received_contract
                 traded_token_symbol = received_info['token_symbol']
             # print(denominated_in)
-
             if denominated_in == 'ETH':
                 # change to api function
                 # price_of_eth = check_token_price_at_timestamp_a(
@@ -585,52 +585,69 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
+
+    WalletTokenBalance.objects.all().delete()
     for contract, token_data in tokens_list.items():
         #create Token, WalletTokenBalance objects
         token, created = Token.objects.update_or_create(
             contract=contract, defaults=token_data)
-        try:
-            current_token_price = balances_prices_info[contract]['latest_price']
-
-            current_token_balance = balances[contract]['balance']
-            average_purchase_price = historic_balances_p_l[contract]['token_gross_entry']
-            net_purchase_price = historic_balances_p_l[contract]['token_net_entry']
-            purchased_token_amount = historic_balances_p_l[contract]['purchased_token_balance']
-            sold_token_amount = historic_balances_p_l[contract]['sold_token_balance']
-            total_usd_spent_for_token = historic_balances_p_l[contract]['token_total_spent']
-            total_usd_received_from_selling = historic_balances_p_l[contract]['token_total_sold']
-            token_realized_p_l = historic_balances_p_l[contract]['token_historic_p_l']
-
-            token_total_p_l = tokens_and_wallet_p_l_info[contract]
+        # try:
+        if contract in balances_prices_info:
+            current_token_price = balances_prices_info[contract].get('latest_price') or 0
 
 
-        except Exception as e:
-            current_token_price = 0
-            current_token_balance = 0
-            average_purchase_price = 0
-            net_purchase_price = 0
-            purchased_token_amount = 0
-            sold_token_amount = 0
-            total_usd_spent_for_token = 0
-            total_usd_received_from_selling = 0
-            token_realized_p_l = 0
-            token_total_p_l = 0
-            print(f'Exception in save_wallet_info_to_db - {e}')
         token.last_checked_price_usd = current_token_price
         token.last_checked_price_timestamp = datetime.now()
         token.save()
-        # create defaults for udpate_or_create
-        balance_usd_value = Decimal(current_token_balance) * Decimal(current_token_price)
-        wallet_token_defaults = {'balance': current_token_balance, 'average_purchase_price': average_purchase_price,
-                                 'net_purchase_price': net_purchase_price, 'purchased_token_amount': purchased_token_amount,
-                                 'sold_token_amount': sold_token_amount, 'total_usd_spent_for_token': total_usd_spent_for_token,
-                                 'total_usd_received_from_selling': total_usd_received_from_selling,
-                                 'token_realized_p_l': token_realized_p_l,
-                                 'token_total_p_l': token_total_p_l, 'last_calculated_balance_usd': balance_usd_value}
-        
+
+        wallet_token_defaults = {}
+
+        if contract in balances:
+            current_token_balance = balances[contract].get('balance') or 0
+            wallet_token_defaults.setdefault('balance', current_token_balance)
+            wallet_token_defaults.setdefault('last_calculated_balance_usd', Decimal(current_token_balance) * Decimal(current_token_price))
+        if contract in historic_balances_p_l:
+            _data = historic_balances_p_l.get(contract)
+            if contract == 'eth':
+                print(_data)
+            wallet_token_defaults.setdefault('average_purchase_price', _data.get('token_gross_entry') or 0)
+            wallet_token_defaults.setdefault('net_purchase_price', _data.get('net_purchase_price') or 0)
+            wallet_token_defaults.setdefault('purchased_token_amount', _data.get('purchased_token_amount') or 0)
+            wallet_token_defaults.setdefault('sold_token_amount', _data.get('sold_token_balance') or 0)
+            wallet_token_defaults.setdefault('total_usd_spent_for_token',_data.get('token_total_spent') or 0)
+            wallet_token_defaults.setdefault('total_usd_received_from_selling',_data.get('token_total_sold') or 0)
+            wallet_token_defaults.setdefault('token_realized_p_l',_data.get('token_historic_p_l') or 0)
+
+            # average_purchase_price = _data.get('token_gross_entry') or 0
+            # net_purchase_price = _data.get('token_net_entry') or 0
+            # purchased_token_amount = _data.get('purchased_token_balance') or 0
+            # sold_token_amount = _data.get('sold_token_balance') or 0
+            # total_usd_spent_for_token = _data.get('token_total_spent') or 0
+            # total_usd_received_from_selling = _data.get('token_total_sold') or 0
+            # token_realized_p_l = _data.get('token_historic_p_l') or 0
+
+        if contract in tokens_and_wallet_p_l_info:
+            token_total_p_l = tokens_and_wallet_p_l_info.get(contract) or 0
+            wallet_token_defaults.setdefault('token_total_p_l', token_total_p_l)
+
 
         wallet_token_balance, _created = WalletTokenBalance.objects.update_or_create(
             wallet=wallet, token=token, defaults=wallet_token_defaults)
+
+        # except Exception as e:
+        #     current_token_price = 0
+        #     current_token_balance = 0
+        #     average_purchase_price = 0
+        #     net_purchase_price = 0
+        #     purchased_token_amount = 0
+        #     sold_token_amount = 0
+        #     total_usd_spent_for_token = 0
+        #     total_usd_received_from_selling = 0
+        #     token_realized_p_l = 0
+        #     token_total_p_l = 0
+        #     print(f'Exception in save_wallet_info_to_db - {traceback.format_exc()}')
+
+        # create defaults for udpate_or_create
 
     tokens = Token.objects.all().values_list('contract', 'id')
     token_ids = {contract: id for contract, id in tokens}

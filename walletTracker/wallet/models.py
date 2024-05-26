@@ -93,16 +93,16 @@ class WalletTokenBalance(models.Model):
     token = models.ForeignKey(Token, on_delete=models.CASCADE, null=False)
     balance = models.CharField(max_length=128, null=False, default='0')
     last_updated = models.DateTimeField(auto_now=True)
-    average_purchase_price = models.CharField(max_length=128, null=False)
-    net_purchase_price = models.CharField(max_length=128, null=False)
-    purchased_token_amount = models.CharField(max_length=128, null=False)
-    sold_token_amount = models.CharField(max_length=128, null=False)
+    average_purchase_price = models.CharField(max_length=128, null=True, blank=True)
+    net_purchase_price = models.CharField(max_length=128, null=True, blank=True)
+    purchased_token_amount = models.CharField(max_length=128, null=True, blank=True)
+    sold_token_amount = models.CharField(max_length=128, null=True, blank=True)
     total_usd_spent_for_token = models.DecimalField(
-        max_digits=64, decimal_places=2)
+        max_digits=64, decimal_places=2, null=True, blank=True)
     total_usd_received_from_selling = models.DecimalField(
-        max_digits=64, decimal_places=2)
-    token_realized_p_l = models.DecimalField(max_digits=64, decimal_places=2)
-    token_total_p_l = models.DecimalField(max_digits=64, decimal_places=2)
+        max_digits=64, decimal_places=2, null=True, blank=True)
+    token_realized_p_l = models.DecimalField(max_digits=64, decimal_places=2, null=True, blank=True)
+    token_total_p_l = models.DecimalField(max_digits=64, decimal_places=2, null=True, blank=True)
     last_calculated_balance_usd = models.DecimalField(
         max_digits=64, decimal_places=2, default=0)
 
