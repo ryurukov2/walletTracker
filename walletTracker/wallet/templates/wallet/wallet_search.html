@@ -35,7 +35,7 @@
       <h2>Wallet statistics</h2>
       <div class="wallet-statistics-container">
         
-        <div class="current-wallet-usd-balance">Current USD balance: $<span class='value'>{{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</span></div>
+        <div class="current-wallet-usd-balance">Current USD balance: $<span class="value">{{ wallet_data.wallet_info.wallet_obj.last_calculated_balance_usd }}</span></div>
         <div class="total-wallet-p-l">Total P/L: $<span class="value">{{ wallet_data.wallet_info.wallet_obj.wallet_total_p_l }}</span></div>
         <div class="realized-wallet-p-l">Realized P/L: $<span class="value">{{ wallet_data.wallet_info.wallet_obj.wallet_realized_p_l }}</span></div>
         <div class="amount_spent_for_purchases">Amount Spent (USD): $<span class="value">{{ wallet_data.wallet_info.wallet_obj.amount_spent_for_purchases_usd }}</span></div>
@@ -46,6 +46,12 @@
     <!-- Current Balances and Values -->
     <section id="balances">
       <h2>Wallet Balances</h2>
+      <div class="toggle-container">
+        <label class="toggle-switch">
+            <input type="checkbox" id="toggleBox" onclick="handleHideSmallBalances()">
+            <span class="slider"></span>
+        </label>
+    </div>
       <div class="balance-header">
         <span class="balance-token-symbol">Token</span> 
         <span class="balance-token-balance">Token balance</span> 
@@ -68,12 +74,20 @@
           </div>
           <span class="balance-token-balance">{{ token_data.balance }}</span> 
           <span class="balance-token-last-checked-price-usd">${{ token_data.token.last_checked_price_usd }}</span> 
-          <span class="balance-usd-value">${{ token_data.last_calculated_balance_usd }}</span> 
-          <span class="balance-token-p-l">${{ token_data.token_total_p_l }}</span>
+          <span class="balance-usd-value">
+            {% if token_data.last_calculated_balance_usd != None %}
+            ${{ token_data.last_calculated_balance_usd }}
+            {% endif %}
+          </span> 
+            <span class="balance-token-p-l">
+            {% if token_data.token_total_p_l != None %}
+            ${{ token_data.token_total_p_l }}
+            {% endif %}
+          </span>
         </div>
         {% endfor %}
       </div>
-      <button onclick="showAllItems()">Show All</button>
+      <button onclick="handleShowAllItems()">Show All</button>
     </section>
     <!-- Transactions -->
     <section id="transactions">
@@ -103,6 +117,7 @@
     <!-- Total P/L -->
     <script>
         const queriedAddress = '{{ address|escapejs }}'
+        const walletDataStatus = '{{ wallet_data.data_status|escapejs }}'
     </script>
   </body>
 </html>

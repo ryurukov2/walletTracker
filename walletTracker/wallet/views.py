@@ -347,6 +347,8 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, 
 
 
 def calculate_purchase_exchange_rate(transactions):
+    
+    # eth contract addresses for the tokens most often used as currency to buy/sell
     denominators = {'ETH': 'eth', 'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
                     'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'}
     
@@ -585,8 +587,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
-
-    WalletTokenBalance.objects.all().delete()
+    
     for contract, token_data in tokens_list.items():
         #create Token, WalletTokenBalance objects
         token, created = Token.objects.update_or_create(
@@ -774,8 +775,8 @@ def wallet_data_available_in_db(address_queried):
         # return db_wallet
         wallet_data = query_all_wallet_info_from_database(db_wallet)
 
-        # return wallet_data
-        return False
+        return wallet_data
+        # return False
     else:
         db_wallet.is_being_calculated = True
         return False
