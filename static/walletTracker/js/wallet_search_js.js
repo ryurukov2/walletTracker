@@ -1,13 +1,34 @@
+// global variables
+const sortStates = {
+  balances: { field: "balance-usd-value", order: "desc" },
+};
+var hideSmallBalances = false;
+var showAllBalanceItems = false;
+// global variables
+
 var start = function () {
   // global variables from wallet_search template
-  console.log(queriedAddress)
 
+  attachSortingEventListeners();
+  if (walletDataStatus === "ready") {
+    markSmallBalances();
+  }
+
+  const messageHandlers = {
+    balances: handleBalancesMessage,
+    transactions: handleTransactionsMessage,
+    transactions_details: handleTransactionDetailsMessage,
+    current_token_prices: handleCurrentTokenPricesMessage,
+    finalized_usd_prices: handleFinalizedUsdPricesMessage,
+    historic_balances_p_l: handleHistoricBalancesPLMessage,
+    tokens_and_wallet_p_l_info: handleTokensAndWalletPLMessage,
+  };
   // Establishes channels connection
   var es = new ReconnectingEventSource("/events/");
+
+
   es.onopen = function () {
     console.log("connected");
-    const currentTime = Date.now();
-    console.log(currentTime);
   };
   es.onerror = function () {
     console.log("connection error");
@@ -27,6 +48,25 @@ var start = function () {
       es.close();
       e = JSON.parse(e.data);
       console.log("stream error: " + e.condition + ": " + e.text);
+    },
+    false
+  );
+  es.addEventListener(
+    "message",
+    function (e) {
+      let resp = JSON.parse(e.data);
+      console.log(resp);
+      Object.keys(resp).forEach((data_info) => {
+        console.log(data_info);
+
+        const handler = messageHandlers[data_info];
+
+        if (handler) {
+          handler(resp[data_info]);
+        } else {
+          console.log("No handler for this type ", data_info);
+        }
+      });
     },
     false
   );
@@ -124,7 +164,6 @@ var start = function () {
     // Parses the current token prices object sent via channels and adds the current prices to the already created balances entries
     console.log("handleCurrentTokenPricesMessage");
 
-    const balancesDiv = document.querySelector("#balances > div > ul");
     Object.keys(data).forEach((contract) => {
       let balanceDiv = document.querySelector(
         `#balance-${contract} > .balance-usd-value`
@@ -132,23 +171,42 @@ var start = function () {
       let lastCheckedDiv = document.querySelector(
         `#balance-${contract} > .balance-token-last-checked-price-usd`
       );
-      let iconElement = document.querySelector(`#balance-${contract} .balance-token-icon`);
+      let iconElement = document.querySelector(
+        `#balance-${contract} .balance-token-icon`
+      );
+
+      // add usd value
       if (balanceDiv) {
-        balanceDiv.innerHTML = `$${parseFloat(data[contract]?.usd_value).toFixed(2)}`;
+        balanceDiv.innerHTML = `$${parseFloat(
+          data[contract]?.usd_value
+        ).toFixed(2)}`;
+
+        if (data[contract]?.usd_value < 2) {
+          let balanceElementContainer = document.querySelector(
+            `#balance-${contract}`
+          );
+          balanceElementContainer.classList.add("small-balance");
+        }
       }
+
+      // add last checked token price value
       if (lastCheckedDiv) {
         lastCheckedDiv.innerHTML = `$${data[contract]?.latest_price}`;
       }
-      if (iconElement && data[contract].token_image_url){
+
+      // add token image
+      if (iconElement && data[contract].token_image_url) {
         iconElement.src = data[contract].token_image_url;
       }
     });
+
+    // sort the items in the current order
+    sortBalancesList();
   }
+  // sortBalancesList("balance-usd-value", toggleSortState("balances"))
 
   function handleFinalizedUsdPricesMessage(data) {
     console.log("handleFinalizedUsdPricesMessage");
-
-
   }
 
   function handleHistoricBalancesPLMessage(data) {
@@ -158,61 +216,165 @@ var start = function () {
   function handleTokensAndWalletPLMessage(data) {
     console.log("handleTokensAndWalletPLMessage");
     const elementQueries = {
-      'total': 'total-wallet-p-l',
-      'total_wallet_sold': 'amount_received_from_selling',
-      'total_wallet_spent': 'amount_spent_for_purchases',
-      'wallet_realized_p_l': 'realized-wallet-p-l',
-      'total_usd_value': 'current-wallet-usd-balance'
-    }
+      total: "total-wallet-p-l",
+      total_wallet_sold: "amount_received_from_selling",
+      total_wallet_spent: "amount_spent_for_purchases",
+      wallet_realized_p_l: "realized-wallet-p-l",
+      total_usd_value: "current-wallet-usd-balance",
+    };
     Object.keys(data).forEach((contract) => {
-      if(contract in elementQueries){
-        const elementToUpdate = document.querySelector(`.${elementQueries[contract]} > .value`)
-        elementToUpdate.innerHTML = `${parseFloat(data[contract].toFixed(2))}`
-      }else{
-      let tokenPLDiv = document.querySelector(
-        `#balance-${contract} > .balance-token-p-l`
-      );
-      if (tokenPLDiv && data[contract]) {
-        tokenPLDiv.innerHTML = `$${parseFloat(data[contract]).toFixed(2)}`;
+      if (contract in elementQueries) {
+        const elementToUpdate = document.querySelector(
+          `.${elementQueries[contract]} > .value`
+        );
+        elementToUpdate.innerHTML = `${parseFloat(data[contract].toFixed(2))}`;
+      } else {
+        let tokenPLDiv = document.querySelector(
+          `#balance-${contract} > .balance-token-p-l`
+        );
+        if (tokenPLDiv && data[contract]) {
+          tokenPLDiv.innerHTML = `$${parseFloat(data[contract]).toFixed(2)}`;
+        }
       }
-    }
     });
   }
-
-  const messageHandlers = {
-    balances: handleBalancesMessage,
-    transactions: handleTransactionsMessage,
-    transactions_details: handleTransactionDetailsMessage,
-    current_token_prices: handleCurrentTokenPricesMessage,
-    finalized_usd_prices: handleFinalizedUsdPricesMessage,
-    historic_balances_p_l: handleHistoricBalancesPLMessage,
-    tokens_and_wallet_p_l_info: handleTokensAndWalletPLMessage,
-  };
-  es.addEventListener(
-    "message",
-    function (e) {
-      let resp = JSON.parse(e.data);
-      console.log(resp);
-      Object.keys(resp).forEach((data_info) => {
-        console.log(data_info);
-
-        const handler = messageHandlers[data_info];
-
-        if (handler) {
-          handler(resp[data_info]);
-        } else {
-          console.log("No handler for this type ", data_info);
-        }
-      });
-    },
-    false
-  );
-
 };
 
-function showAllItems() {
-  var items = document.querySelectorAll("#balances .to-be-hidden");
-  items.forEach(function (item) {
-    item.classList.toggle("hidden");
+function attachSortingEventListeners() {
+  document
+    .querySelector(`.balance-header > .balance-usd-value`)
+    .addEventListener(
+      "mousedown",
+      () => {
+        toggleSortState("balances", "balance-usd-value");
+      },
+      true
+    );
+
+  document
+    .querySelector(`.balance-header > .balance-token-p-l`)
+    .addEventListener(
+      "mousedown",
+      () => {
+        const newState = toggleSortState("balances", "balance-token-p-l");
+      },
+      true
+    );
+}
+
+function markSmallBalances() {
+  const balanceContainer = document.getElementById("balance-outer-container");
+  const items = Array.from(balanceContainer.children);
+
+  items.forEach((item) => {
+    balanceValue = parseFloat(
+      item.querySelector(".balance-usd-value").textContent.replace("$", "")
+    );
+    if (balanceValue < 2) {
+      item.classList.add("small-balance");
+    }
   });
+}
+
+/**
+ * Toggles the selected sort state and calls the sort function
+ *
+ * @param   section  The section of the website to toggle sort for.
+ * @param   field The field by which to sort.
+ */
+function toggleSortState(section, field) {
+  if (section in sortStates) {
+    currentOrder = sortStates[section];
+    if (currentOrder["field"] === field) {
+      currentOrder["order"] = currentOrder["order"] === "asc" ? "desc" : "asc";
+    } else {
+      currentOrder["field"] = field;
+      currentOrder["order"] = "desc";
+    }
+    sortBalancesList();
+  }
+}
+
+function markToBeHidden() {
+  const balanceContainer = document.getElementById("balance-outer-container");
+  const items = Array.from(balanceContainer.children);
+  let count = 0;
+  items.forEach((item) => {
+    if (count >= 10) {
+      item.classList.add("to-be-hidden");
+      if (!showAllBalanceItems) {
+        item.classList.add("hidden");
+      }
+    } else {
+      item.classList.remove("to-be-hidden");
+      if (!item.classList.contains("small-balance") || !hideSmallBalances) {
+        item.classList.remove("hidden");
+        count += 1;
+      }
+    }
+  });
+}
+function sortBalancesList() {
+  const balanceContainer = document.getElementById("balance-outer-container");
+  const items = Array.from(balanceContainer.children);
+  sort_by = sortStates?.balances?.field;
+  ord = sortStates?.balances?.order;
+
+  items.sort((a, b) => {
+    const aValue =
+      parseFloat(a.querySelector(`.${sort_by}`).textContent.replace("$", "")) || 0;
+    const bValue =
+      parseFloat(b.querySelector(`.${sort_by}`).textContent.replace("$", "")) || 0;
+
+    if (ord === "desc") {
+      return bValue - aValue;
+    } else {
+      return aValue - bValue;
+    }
+  });
+
+  // Clear the container and re-append sorted items
+  balanceContainer.innerHTML = "";
+  let count = 0;
+  items.forEach((item) => {
+    if (count >= 10) {
+      item.classList.add("to-be-hidden");
+      if (!showAllBalanceItems) {
+        item.classList.add("hidden");
+      }
+    } else {
+      item.classList.remove("to-be-hidden");
+      if (!item.classList.contains("small-balance") || !hideSmallBalances) {
+        item.classList.remove("hidden");
+        count += 1;
+      }
+    }
+    balanceContainer.appendChild(item);
+  });
+}
+
+function handleShowAllItems() {
+  showAllBalanceItems = showAllBalanceItems === true ? false : true;
+
+  let items = document.querySelectorAll("#balances .to-be-hidden");
+  items.forEach(function (item) {
+    if (!hideSmallBalances || !item.classList.contains("small-balance")) {
+      item.classList.toggle("hidden");
+    }
+  });
+}
+
+function handleHideSmallBalances() {
+  hideSmallBalances = hideSmallBalances === true ? false : true;
+  const smallBalances = document.querySelectorAll("#balances .small-balance");
+  smallBalances.forEach((item) => {
+    if (hideSmallBalances) {
+      item.classList.add("hidden");
+    } else {
+      if (!item.classList.contains("to-be-hidden") || showAllBalanceItems) {
+        item.classList.remove("hidden");
+      }
+    }
+  });
+  markToBeHidden();
 }
