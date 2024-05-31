@@ -25,10 +25,12 @@ load_dotenv()
 
 
 def index(request):
+    'Homepage view'
     return render(request, 'index.html')
 
 
 def combine_records(token_tx, internal_tx, normal_tx):
+    'Combines records from the three types of transactions'
     combined_data = OrderedDict()
 
     def add_entry(entry):
@@ -162,6 +164,7 @@ def calculate_balances_and_txns(address, combined_data):
 
 
 def query_all_wallet_info_from_database(wallet):
+    'Queries all information about the wallet from the database'
     wallet_balances = list(WalletTokenBalance.objects.filter(wallet=wallet).select_related('token').order_by("-last_calculated_balance_usd"))
     # wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet).order_by('-timestamp').values())
     wallet_transactions = list(Transaction.objects.filter(related_wallet=wallet, type_of_transaction__in=['Trade', 'Send', 'Receive']).select_related('sent_token', 'received_token').order_by('-timestamp'))[:20]
@@ -176,6 +179,7 @@ def query_all_wallet_info_from_database(wallet):
 
 
 async def make_fetch(session, url, params={}):
+    'Basic fetch function for async API requests'
     try:
         async with session.get(url, params=params) as resp:
             print(resp.status)
@@ -188,6 +192,7 @@ async def make_fetch(session, url, params={}):
 
 
 async def initial_etherscan_api_request_tasks(address_queried):
+    'Prepares and executes asynchronously API requests to gather the initial wallet data'
     url = 'https://api.etherscan.io/api'
     ETHERSCAN_API_KEY = os.environ.get('ETHERSCAN_API_KEY')
     action_list = ['tokentx', 'txlistinternal', 'txlist']
@@ -206,7 +211,7 @@ async def initial_etherscan_api_request_tasks(address_queried):
 
 
 async def gather_current_prices(session, items_list: list):
-    'query the current values of the balances in the wallet'
+    'Query the current values of the tokens in the wallet'
     def chunks(lst, n):
         'split a list into chunks of n items'
         for i in range(0, len(lst), n):
@@ -286,6 +291,7 @@ async def gather_historic_prices(session, timestamps_of_eth_trades):
 
 
 async def process_current_prices(prices, balances, tokens_list):
+    'Processes the response data for the current prices of tokens in the wallet'
     balances_prices_info = OrderedDict()
     total_usd_value = 0
     for contract, token_data in prices.items():
@@ -311,10 +317,12 @@ async def process_current_prices(prices, balances, tokens_list):
 
 
 async def normalize_historic_prices(prices_list):
+    'Processes the data returned from the historic ETH prices API, normalizes it to db requirements'
     return {candle['time']: (float(candle["open"]) + float(candle["close"]))/2 for candle in prices_list}
 
 
 async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, tokens_list):
+    'Creates and executes tasks to asyncronously query current token prices and historic token prices'
     
     async with aiohttp.ClientSession() as session:
         _a = list(filter(lambda x: x != 'eth', balances.keys()))
@@ -347,7 +355,7 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, 
 
 
 def calculate_purchase_exchange_rate(transactions):
-    
+    'Calculates exchange rates at the time of each transaction'
     # eth contract addresses for the tokens most often used as currency to buy/sell
     denominators = {'ETH': 'eth', 'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
                     'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'}
@@ -532,6 +540,7 @@ def match_historic_prices(historic_prices, transaction_details):
 
 
 def calculate_total_token_p_l(balances_prices_info, historic_balances_p_l):
+    'Calculates the total P/L for each token and the wallet itself'
     current_tokens_p_l = OrderedDict()
     total_wallet_p_l, total_wallet_spent, total_wallet_sold = 0, 0, 0
     for contract, details in historic_balances_p_l.items():
@@ -584,6 +593,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
                            transactions_details, balances_prices_info, normalized_historic_prices,
                            calculated_historic_prices, historic_balances_p_l,
                            tokens_and_wallet_p_l_info, tokens_list):
+    'Saves the information gathered from the API calls to the database'
 
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
@@ -717,6 +727,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
 
 def wallet_calaulations_thread_worker(address_queried):
+    'Thread worker function to perform calculations for a wallet'
     # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
     # combined_data = combine_records(*datasets_list)
 
@@ -768,6 +779,7 @@ def wallet_calaulations_thread_worker(address_queried):
 
 
 def wallet_data_available_in_db(address_queried):
+    'Checks if the wallet has already been saved to the database'
     db_wallet, created = Wallet.objects.get_or_create(address=address_queried)
 
     if not created and not db_wallet.is_being_calculated:
@@ -782,6 +794,7 @@ def wallet_data_available_in_db(address_queried):
         return False
 
 def wallet_search(request):
+    'Wallet search view'
     if request.method == 'POST':
         # print(request.__dict__)
         address_queried = request.POST.get('address')
