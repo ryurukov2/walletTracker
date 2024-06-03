@@ -22,10 +22,10 @@ var start = function () {
     finalized_usd_prices: handleFinalizedUsdPricesMessage,
     historic_balances_p_l: handleHistoricBalancesPLMessage,
     tokens_and_wallet_p_l_info: handleTokensAndWalletPLMessage,
+    suspicious_data: handleSuspiciousDataMessage,
   };
   // Establishes channels connection
   var es = new ReconnectingEventSource("/events/");
-
 
   es.onopen = function () {
     console.log("connected");
@@ -203,6 +203,21 @@ var start = function () {
     // sort the items in the current order
     sortBalancesList();
   }
+
+  function handleSuspiciousDataMessage(data) {
+    const suspBalances = data["suspicious_balances"];
+    const suspTransactions = data["suspicious_transactions"];
+    suspBalances.forEach((contract) => {
+      const balanceElement = document.querySelector(`#balance-${contract}`);
+      balanceElement.remove();
+    });
+    markToBeHidden();
+    suspTransactions.forEach((hash) => {
+      const transactionElement = document.querySelector(`#transaction-${hash}`);
+      transactionElement.remove();
+    });
+  }
+
   // sortBalancesList("balance-usd-value", toggleSortState("balances"))
 
   function handleFinalizedUsdPricesMessage(data) {
@@ -322,9 +337,11 @@ function sortBalancesList() {
 
   items.sort((a, b) => {
     const aValue =
-      parseFloat(a.querySelector(`.${sort_by}`).textContent.replace("$", "")) || 0;
+      parseFloat(a.querySelector(`.${sort_by}`).textContent.replace("$", "")) ||
+      0;
     const bValue =
-      parseFloat(b.querySelector(`.${sort_by}`).textContent.replace("$", "")) || 0;
+      parseFloat(b.querySelector(`.${sort_by}`).textContent.replace("$", "")) ||
+      0;
 
     if (ord === "desc") {
       return bValue - aValue;

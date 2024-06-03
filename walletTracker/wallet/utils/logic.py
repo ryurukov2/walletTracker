@@ -6,7 +6,7 @@ from django.conf import settings
 import json
 from .async_api_calls import initial_etherscan_api_request_tasks, query_historic_and_current_prices
 from .database_connections import save_wallet_info_to_db
-from .data_processing import calculate_balances_and_txns, calculate_purchase_exchange_rate, calculate_total_token_p_l, combine_records, filter_out_transaction_type, match_historic_prices, take_first_n_from_dict
+from .data_processing import calculate_balances_and_txns, calculate_purchase_exchange_rate, calculate_total_token_p_l, combine_records, filter_out_transaction_type, filter_suspicious_tokens, match_historic_prices, separate_suspicious_token_entries, take_first_n_from_dict
 
 def wallet_calaulations_thread_worker(address_queried):
     'Thread worker function to perform calculations for a wallet'
@@ -42,6 +42,14 @@ def wallet_calaulations_thread_worker(address_queried):
     balances_prices_info, normalized_historic_prices = asyncio.run(query_historic_and_current_prices(
         timestamps_of_eth_trades, balances, tokens_list))
 
+    suspicious_tokens = filter_suspicious_tokens(balances, balances_prices_info)
+    suspicious_data = separate_suspicious_token_entries(balances, transactions, tokens_list, suspicious_tokens)
+    suspicious_transactions = [h for h in suspicious_data['suspicious_transactions'].keys()]
+    suspicious_balances = [c for c in suspicious_data['suspicious_balances'].keys()]
+    send_event('test', 'message', data={
+        'suspicious_data': {'suspicious_transactions': suspicious_transactions,
+                            'suspicious_balances': suspicious_balances}
+    })
     # match the closest historic price time to each of the txns
     calculated_historic_prices, historic_balances_p_l = match_historic_prices(
         normalized_historic_prices, transactions_details)

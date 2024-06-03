@@ -46,7 +46,6 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
-    
     for contract, token_data in tokens_list.items():
         #create Token, WalletTokenBalance objects
         token, created = Token.objects.update_or_create(

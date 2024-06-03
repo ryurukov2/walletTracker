@@ -224,6 +224,37 @@ def match_historic_prices(historic_prices, transaction_details):
     return calculated_transaction_rates, tokens_p_l
 
 
+def filter_suspicious_tokens(balances, balances_info):
+    'Returns a list of tokens that seem suspicious, so they are not displayed and saved in DB'
+    suspicious_tokens = []
+    for contract in balances.keys():
+        if contract not in balances_info.keys():
+            suspicious_tokens.append(contract)
+    
+    return suspicious_tokens
+
+def separate_suspicious_token_entries(balances: dict, transactions: dict, tokens_list: dict, suspicious_tokens: list):
+    'Modifies the balances and transactions dictionaries and returns an object containing the filtered out balances and transactions'
+    suspicious_balances, suspicious_transactions = {}, {}
+    for contract in suspicious_tokens:
+        if contract in tokens_list.keys():
+            del tokens_list[contract]
+
+    for contract in suspicious_tokens:
+        if contract in balances.keys():
+            suspicious_balances.setdefault(contract, balances[contract])
+            del balances[contract]
+    
+
+    for hash in list(transactions.keys()):
+        if 'received' in transactions[hash].keys():
+            for contract in transactions[hash]['received'].keys():
+
+                if contract in suspicious_tokens:
+                    suspicious_transactions.setdefault(hash, transactions[hash])
+                    del transactions[hash]
+    
+    return {'suspicious_balances': suspicious_balances, 'suspicious_transactions': suspicious_transactions}
 
 def filter_out_transaction_type(data_dict, type):
     'Returns a filtered dictionary where all transactions of the selected type are removed.'
