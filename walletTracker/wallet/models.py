@@ -21,6 +21,7 @@ class Wallet(models.Model):
     is_being_calculated = models.BooleanField(default=True, null=False)
 
     def fill_total_wallet_p_l_data(self):
+        'Fills out the p/l wallet fields based on the token data available in the database'
         wallet_data = WalletTokenBalance.objects.filter(wallet=self).aggregate(models.Sum("token_total_p_l"),
                                                                                models.Sum("token_realized_p_l"), models.Sum("total_usd_spent_for_token"), models.Sum("total_usd_received_from_selling"), models.Sum("last_calculated_balance_usd"))
 
@@ -30,7 +31,6 @@ class Wallet(models.Model):
             self.amount_spent_for_purchases_usd = wallet_data['total_usd_spent_for_token__sum']
             self.amount_received_from_selling = wallet_data['total_usd_received_from_selling__sum']
             self.last_calculated_balance_usd = wallet_data['last_calculated_balance_usd__sum']
-            self.save()
         except Exception as e:
             print(f'Exception occurred in fill_total_wallet_p_l_data: {e}')
 
@@ -111,5 +111,8 @@ class WalletTokenBalance(models.Model):
 
 
 class HistoricalETHPrice(models.Model):
-    timestamp = models.IntegerField(null=False)
+    timestamp = models.IntegerField(null=False, unique=True)
     price = models.DecimalField(null=False, decimal_places=2, max_digits=32)
+
+class SuspiciousTokens(models.Model):
+    contract = models.CharField(max_length=255, null=False, unique=True)

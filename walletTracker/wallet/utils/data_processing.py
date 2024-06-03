@@ -3,6 +3,8 @@ from collections import OrderedDict
 from asgiref.sync import sync_to_async
 from django_eventstream import send_event
 
+from .database_connections import get_all_suspicious_tokens
+
 
 async def process_current_prices(prices, balances, tokens_list):
     'Processes the response data for the current prices of tokens in the wallet'
@@ -298,14 +300,17 @@ def combine_records(token_tx, internal_tx, normal_tx):
 
 def calculate_balances_and_txns(address, combined_data):
     'Parse all transactions and return transactions, balances, token_list'
-
-    transactions, balances, tokens_list = OrderedDict(), OrderedDict(), OrderedDict()
+    suspicious_tokens = get_all_suspicious_tokens()
+    transactions, balances, tokens_list = {}, {}, {}
+    # dict with suspicious transactins and balances, not returned currently as they are not saved in DB
+    suspicious_txns, suspicious_balances = {}, {}
     eth_decimal = 18
     for hash, transaction_entries in combined_data.items():
         # print(transaction_entries)
         tx_fee = 0
         tx_moves = {}
         transaction_type = ''
+        isSusp = False
 
         for transaction_entry_data in transaction_entries.values():
             isReceiver = False
@@ -342,6 +347,10 @@ def calculate_balances_and_txns(address, combined_data):
                 token_symbol = transaction_entry_data['tokenSymbol']
                 token_decimal = int(transaction_entry_data['tokenDecimal'])
 
+            if token_contract in suspicious_tokens:
+                isSusp = True
+
+
             action = 'received' if isReceiver else 'sent'
             _trade_info = {
                 'token_symbol': token_symbol,
@@ -376,21 +385,18 @@ def calculate_balances_and_txns(address, combined_data):
             balance_change = (amount_transfered /
                               (10**token_decimal)) * balance_modifier
             if token_contract not in balances.keys():
-                balances[token_contract] = {
-                    'tokenSymbol': token_symbol, 'balance': balance_change}
+                if not isSusp:
+                    balances[token_contract] = {
+                        'tokenSymbol': token_symbol, 'balance': balance_change}
+                else:
+                    suspicious_balances[token_contract] = {
+                        'tokenSymbol': token_symbol, 'balance': balance_change}
             else:
+                if not isSusp:
+                    balances[token_contract]['balance'] = balances[token_contract]['balance'] + balance_change
+                else:
+                    suspicious_balances[token_contract]['balance'] = suspicious_balances[token_contract]['balance'] + balance_change
 
-                balances[token_contract]['balance'] = balances[token_contract]['balance'] + balance_change
-            # print()
-
-            # if token_symbol not in balances.keys():
-            #     balances[token_symbol] = amount_transfered/(10**token_decimal)
-            # else:
-            #     balance_modifier = 1 if isReceiver else -1
-            #     balance_change = (amount_transfered /
-            #                       (10**token_decimal)) * balance_modifier
-            #     balances[token_symbol] = balances[token_symbol] + \
-            #         balance_change
 
         # deduct fee
         balances["eth"]["balance"] = balances["eth"]["balance"] - \
@@ -407,9 +413,14 @@ def calculate_balances_and_txns(address, combined_data):
 
         tx_moves['transaction_type'] = transaction_type
         # set values in 'transactions'
-        transactions[hash] = tx_moves
+        if not isSusp:
+            transactions[hash] = tx_moves
+        else:
+            suspicious_txns[hash] = tx_moves
 
+    # sort transactions by timestamp
     sorted_transactions = dict(sorted(transactions.items(), key=lambda item: -1*int(item[1]['timeStamp'])))
+    
     return balances, sorted_transactions, tokens_list
 
 

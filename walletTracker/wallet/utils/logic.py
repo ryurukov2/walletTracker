@@ -41,7 +41,7 @@ def wallet_calaulations_thread_worker(address_queried):
 
     balances_prices_info, normalized_historic_prices = asyncio.run(query_historic_and_current_prices(
         timestamps_of_eth_trades, balances, tokens_list))
-
+    suspicious_tokens = []
     suspicious_tokens = filter_suspicious_tokens(balances, balances_prices_info)
     suspicious_data = separate_suspicious_token_entries(balances, transactions, tokens_list, suspicious_tokens)
     suspicious_transactions = [h for h in suspicious_data['suspicious_transactions'].keys()]
@@ -65,4 +65,4 @@ def wallet_calaulations_thread_worker(address_queried):
                'tokens_and_wallet_p_l_info': tokens_and_wallet_p_l_info})
     # write to db both balances and historic
     save_wallet_info_to_db(address_queried, balances, transactions, transactions_details, balances_prices_info,
-                           normalized_historic_prices, calculated_historic_prices, historic_balances_p_l, tokens_and_wallet_p_l_info, tokens_list)
+                           normalized_historic_prices, calculated_historic_prices, historic_balances_p_l, tokens_and_wallet_p_l_info, tokens_list, suspicious_tokens)

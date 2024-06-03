@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 import numpy as np
-from ..models import HistoricalETHPrice, TradeTransactionDetails, Transaction, Wallet, WalletTokenBalance, Token
+from ..models import HistoricalETHPrice, SuspiciousTokens, TradeTransactionDetails, Transaction, Wallet, WalletTokenBalance, Token
 
 
 
@@ -38,10 +38,13 @@ def wallet_data_available_in_db(address_queried):
         return False
     
 
+def get_all_suspicious_tokens():
+    return set(SuspiciousTokens.objects.all().values_list('contract', flat=True))
+
 def save_wallet_info_to_db(address_queried, balances, transactions,
                            transactions_details, balances_prices_info, normalized_historic_prices,
                            calculated_historic_prices, historic_balances_p_l,
-                           tokens_and_wallet_p_l_info, tokens_list):
+                           tokens_and_wallet_p_l_info, tokens_list, suspicious_tokens):
     'Saves the information gathered from the API calls to the database'
 
     # parse the data to model objects
@@ -67,8 +70,6 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             wallet_token_defaults.setdefault('last_calculated_balance_usd', Decimal(current_token_balance) * Decimal(current_token_price))
         if contract in historic_balances_p_l:
             _data = historic_balances_p_l.get(contract)
-            if contract == 'eth':
-                print(_data)
             wallet_token_defaults.setdefault('average_purchase_price', _data.get('token_gross_entry') or 0)
             wallet_token_defaults.setdefault('net_purchase_price', _data.get('net_purchase_price') or 0)
             wallet_token_defaults.setdefault('purchased_token_amount', _data.get('purchased_token_amount') or 0)
@@ -77,13 +78,7 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             wallet_token_defaults.setdefault('total_usd_received_from_selling',_data.get('token_total_sold') or 0)
             wallet_token_defaults.setdefault('token_realized_p_l',_data.get('token_historic_p_l') or 0)
 
-            # average_purchase_price = _data.get('token_gross_entry') or 0
-            # net_purchase_price = _data.get('token_net_entry') or 0
-            # purchased_token_amount = _data.get('purchased_token_balance') or 0
-            # sold_token_amount = _data.get('sold_token_balance') or 0
-            # total_usd_spent_for_token = _data.get('token_total_spent') or 0
-            # total_usd_received_from_selling = _data.get('token_total_sold') or 0
-            # token_realized_p_l = _data.get('token_historic_p_l') or 0
+
 
         if contract in tokens_and_wallet_p_l_info:
             token_total_p_l = tokens_and_wallet_p_l_info.get(contract) or 0
@@ -93,31 +88,16 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
         wallet_token_balance, _created = WalletTokenBalance.objects.update_or_create(
             wallet=wallet, token=token, defaults=wallet_token_defaults)
 
-        # except Exception as e:
-        #     current_token_price = 0
-        #     current_token_balance = 0
-        #     average_purchase_price = 0
-        #     net_purchase_price = 0
-        #     purchased_token_amount = 0
-        #     sold_token_amount = 0
-        #     total_usd_spent_for_token = 0
-        #     total_usd_received_from_selling = 0
-        #     token_realized_p_l = 0
-        #     token_total_p_l = 0
-        #     print(f'Exception in save_wallet_info_to_db - {traceback.format_exc()}')
-
-        # create defaults for udpate_or_create
-
     tokens = Token.objects.all().values_list('contract', 'id')
     token_ids = {contract: id for contract, id in tokens}
 
     for hash, tx_details in transactions.items():
         #create Transaction, TradeTransactionDetails db objects
-        timestamp = tx_details['timeStamp']
-        tx_block = tx_details['blockNumber']
-        tx_fee = tx_details['tx_fee']
-        tx_is_error = tx_details['isError']
-        transaction_type = tx_details['transaction_type']
+        timestamp = tx_details.get('timeStamp')
+        tx_block = tx_details.get('blockNumber')
+        tx_fee = tx_details.get('tx_fee')
+        tx_is_error = tx_details.get('isError')
+        transaction_type = tx_details.get('transaction_type')
         # received_keys= tx_details.get('received', {}).keys()
         # sent_keys= tx_details.get('sent', {}).keys()
         sent_contract = next(iter(tx_details.get('sent', {}).keys()), None)
@@ -163,11 +143,14 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
     # print(normalized_historic_prices)
     wallet.fill_total_wallet_p_l_data()
     wallet.is_being_calculated = False
-
     wallet.save()
 
-    
+    # save historic ETH prices to database
     for at_timestamp, eth_price in normalized_historic_prices.items():
         HistoricalETHPrice.objects.update_or_create(timestamp=at_timestamp, 
                                                     defaults={'timestamp':at_timestamp, 
                                                               'price':eth_price})
+
+    # save suspicious tokens to database
+    for contract in suspicious_tokens:
+        SuspiciousTokens.objects.update_or_create(contract=contract)
