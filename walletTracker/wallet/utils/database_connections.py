@@ -50,13 +50,13 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
     for contract, token_data in tokens_list.items():
+        current_token_balance, current_token_price = 0, 0
         #create Token, WalletTokenBalance objects
         token, created = Token.objects.update_or_create(
             contract=contract, defaults=token_data)
         # try:
         if contract in balances_prices_info:
             current_token_price = balances_prices_info[contract].get('latest_price') or 0
-
 
         token.last_checked_price_usd = current_token_price
         token.last_checked_price_timestamp = datetime.now()

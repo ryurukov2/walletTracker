@@ -359,7 +359,7 @@ def calculate_balances_and_txns(address, combined_data):
                 'token_decimal': token_decimal,
                 'token_name': token_name
             }
-            if token_contract not in tokens_list.keys():
+            if token_contract not in tokens_list.keys() and not isSusp:
                 token_info = {
                     'contract': token_contract,
                     'token_symbol': token_symbol,
@@ -420,7 +420,7 @@ def calculate_balances_and_txns(address, combined_data):
 
     # sort transactions by timestamp
     sorted_transactions = dict(sorted(transactions.items(), key=lambda item: -1*int(item[1]['timeStamp'])))
-    
+
     return balances, sorted_transactions, tokens_list
 
 
