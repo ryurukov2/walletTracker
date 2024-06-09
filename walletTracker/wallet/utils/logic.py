@@ -96,12 +96,9 @@ def data_refresh_thread_worker(wallet: Wallet):
 
     last_transaction = get_latest_transaction(wallet)
 
-    # jj = json.loads(serializers.serialize('json', [ wallet, ]))[0]
 
     old_balances_from_db = separate_balances_data_for_p_l(get_wallet_balances(wallet))
     
-
-    # need to have the balances and transactions so far and add them to the query balances and txns function args+
 
 # 
     balances, transactions, tokens_list = query_balances_and_txns(
@@ -115,18 +112,10 @@ def data_refresh_thread_worker(wallet: Wallet):
     suspicious_tokens = []
     suspicious_tokens = filter_suspicious_tokens(
         balances, balances_prices_info)
-    
-    # print(balances_prices_info)
+
     
 #   
     # calculated_historic_prices, historic_balances_p_l = match_historic_prices(
     #     normalized_historic_prices, transactions_details)
 # 
 
-    # 1. get the current balances = {contract: {balances}} from the database
-    # 2. combine with the balances variable above
-    # 3. do the same with tokens_list
-    # 4. call the 'query current and historic prices' function with the new balances and tokens_list dict
-    # 5. match the new transactions to the ETH prices returned
-    # 6. query the rest of the WalletTokenBalance fields
-    # 7. call the calculate p/l function to update the values

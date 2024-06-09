@@ -109,7 +109,7 @@ AUTH_PASSWORD_VALIDATORS = [
 #         'file': {
 #             'level': 'DEBUG',
 #             'class': 'logging.FileHandler',
-#             'filename': 'django_queries.log',  # Choose a file name and path
+#             'filename': 'django_queries.log',
 #         },
 #     },
 #     'loggers': {
