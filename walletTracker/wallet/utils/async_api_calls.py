@@ -8,19 +8,25 @@ import aiohttp
 from .data_processing import normalize_historic_prices, process_current_prices
 
 
-async def initial_etherscan_api_request_tasks(address_queried):
+async def initial_etherscan_api_request_tasks(address_queried, start_block=None):
     'Prepares and executes asynchronously API requests to gather the initial wallet data'
     url = 'https://api.etherscan.io/api'
     ETHERSCAN_API_KEY = os.environ.get('ETHERSCAN_API_KEY')
     action_list = ['tokentx', 'txlistinternal', 'txlist']
     # print(address_queried)
     async with aiohttp.ClientSession() as session:
-        tasks = [make_fetch(session, url, params={
-            'module': 'account',
-            'action': f'{action}',
-            'address': address_queried,
-            'apikey': ETHERSCAN_API_KEY,
-        }) for action in action_list]
+        tasks = []
+        for action in action_list:
+            params = {
+                'module': 'account',
+                'action': action,
+                'address': address_queried,
+                'apikey': ETHERSCAN_API_KEY,
+            }
+            if start_block is not None:
+                params['startblock'] = start_block
+            
+            tasks.append(make_fetch(session, url, params=params))
 
         datasets_list = await asyncio.gather(*tasks)
     return datasets_list

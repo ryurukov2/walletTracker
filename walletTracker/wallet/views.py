@@ -5,7 +5,7 @@ from django.conf import settings
 from django.shortcuts import render, redirect
 from dotenv import load_dotenv
 from .models import Transaction
-from .utils.logic import wallet_calaulations_thread_worker
+from .utils.logic import wallet_calaulations_thread_worker, data_refresh_thread_worker
 from .utils.database_connections import wallet_data_available_in_db
 load_dotenv()
 
@@ -43,6 +43,9 @@ def wallet_search(request):
             thread.start()
         else:
             wallet_data = {"data_status": "ready", "wallet_info": data_from_db}
+            thread = threading.Thread(target=data_refresh_thread_worker, args=(data_from_db['wallet_obj'],))
+            thread.daemon = True
+            thread.start()
         return render(request, 'wallet/wallet_search.html', context={'address': address_queried, 'wallet_data': wallet_data})
 
 

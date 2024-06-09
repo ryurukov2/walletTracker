@@ -31,15 +31,22 @@ def wallet_data_available_in_db(address_queried):
         # return db_wallet
         wallet_data = query_all_wallet_info_from_database(db_wallet)
 
-        # return wallet_data
-        return False
+        return wallet_data
+        # return False
     else:
         db_wallet.is_being_calculated = True
+        db_wallet.save()
         return False
     
 
 def get_all_suspicious_tokens():
-    return set(SuspiciousTokens.objects.all().values_list('contract', flat=True))
+    return SuspiciousTokens.objects.all().values_list('contract', flat=True)
+
+def get_latest_transaction(wallet):
+    return Transaction.objects.filter(related_wallet=wallet).order_by("block").last()
+
+def get_wallet_balances(wallet):
+    return WalletTokenBalance.objects.filter(wallet=wallet)
 
 def save_wallet_info_to_db(address_queried, balances, transactions,
                            transactions_details, balances_prices_info, normalized_historic_prices,
@@ -49,6 +56,8 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
 
     # parse the data to model objects
     wallet = Wallet.objects.get(address=address_queried)
+
+
     for contract, token_data in tokens_list.items():
         current_token_balance, current_token_price = 0, 0
         #create Token, WalletTokenBalance objects
@@ -70,13 +79,13 @@ def save_wallet_info_to_db(address_queried, balances, transactions,
             wallet_token_defaults.setdefault('last_calculated_balance_usd', Decimal(current_token_balance) * Decimal(current_token_price))
         if contract in historic_balances_p_l:
             _data = historic_balances_p_l.get(contract)
-            wallet_token_defaults.setdefault('average_purchase_price', _data.get('token_gross_entry') or 0)
+            wallet_token_defaults.setdefault('average_purchase_price', _data.get('average_purchase_price') or 0)
             wallet_token_defaults.setdefault('net_purchase_price', _data.get('net_purchase_price') or 0)
             wallet_token_defaults.setdefault('purchased_token_amount', _data.get('purchased_token_amount') or 0)
-            wallet_token_defaults.setdefault('sold_token_amount', _data.get('sold_token_balance') or 0)
-            wallet_token_defaults.setdefault('total_usd_spent_for_token',_data.get('token_total_spent') or 0)
-            wallet_token_defaults.setdefault('total_usd_received_from_selling',_data.get('token_total_sold') or 0)
-            wallet_token_defaults.setdefault('token_realized_p_l',_data.get('token_historic_p_l') or 0)
+            wallet_token_defaults.setdefault('sold_token_amount', _data.get('sold_token_amount') or 0)
+            wallet_token_defaults.setdefault('total_usd_spent_for_token',_data.get('total_usd_spent_for_token') or 0)
+            wallet_token_defaults.setdefault('total_usd_received_from_selling',_data.get('total_usd_received_from_selling') or 0)
+            wallet_token_defaults.setdefault('token_realized_p_l',_data.get('token_realized_p_l') or 0)
 
 
 
