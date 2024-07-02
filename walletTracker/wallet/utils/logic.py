@@ -8,7 +8,7 @@ import json
 from ..models import Transaction, Wallet
 from .async_api_calls import initial_etherscan_api_request_tasks, query_current_prices, query_historic_and_current_prices
 from .database_connections import get_latest_transaction, get_wallet_balances, save_wallet_info_to_db
-from .data_processing import calculate_balances_and_txns, calculate_purchase_exchange_rate, calculate_total_token_p_l, combine_records, filter_out_transaction_type, filter_suspicious_tokens, match_historic_prices, reverse_dict, separate_balances_data_for_p_l, separate_suspicious_token_entries, take_last_n_from_dict
+from .data_processing import calculate_balances_and_txns, calculate_purchase_exchange_rate, calculate_total_balance_values, calculate_total_token_p_l, combine_records, filter_out_transaction_type, filter_suspicious_tokens, match_historic_prices, reverse_dict, separate_balances_data_for_p_l, separate_suspicious_token_entries, take_last_n_from_dict
 
 
 def query_balances_and_txns(address, start_block=None, balances=None, tokens_list=None):
@@ -21,16 +21,16 @@ def query_balances_and_txns(address, start_block=None, balances=None, tokens_lis
 
 def wallet_calaulations_thread_worker(address_queried):
     'Thread worker function to perform calculations for a wallet'
-    # datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
-    # combined_data = combine_records(*datasets_list)
+    datasets_list = asyncio.run(initial_etherscan_api_request_tasks(address_queried))
+    combined_data = combine_records(*datasets_list)
 
-    tokentx = json.loads(
-        open(os.path.join(settings.BASE_DIR, 'tokentx.txt')).read())
-    txlist = json.loads(
-        open(os.path.join(settings.BASE_DIR, 'txlist.txt')).read())
-    txlistinternal = json.loads(
-        open(os.path.join(settings.BASE_DIR, 'txlistinternal.txt')).read())
-    combined_data = combine_records(tokentx, txlist, txlistinternal)
+    # tokentx = json.loads(
+    #     open(os.path.join(settings.BASE_DIR, 'tokentx.txt')).read())
+    # txlist = json.loads(
+    #     open(os.path.join(settings.BASE_DIR, 'txlist.txt')).read())
+    # txlistinternal = json.loads(
+    #     open(os.path.join(settings.BASE_DIR, 'txlistinternal.txt')).read())
+    # combined_data = combine_records(tokentx, txlist, txlistinternal)
 
     balances, transactions, tokens_list = calculate_balances_and_txns(
         address_queried, combined_data)
@@ -154,14 +154,3 @@ def data_refresh_thread_worker(wallet: Wallet):
         save_wallet_info_to_db(address_queried, db_data)
 
 
-def calculate_total_balance_values(balances, prices):
-    total_usd_value = 0
-    for contract, data in balances.items():
-        if prices.get(contract):
-
-            usd_price = prices[contract].get('price_usd') or 0
-            balance = data['balance'] or 0
-            total_value = float(usd_price)*float(balance)
-            total_usd_value += total_value
-            prices[contract].update({'usd_value': total_value})
-    prices.update({'total_usd_value': total_usd_value})

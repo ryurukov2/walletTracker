@@ -480,3 +480,16 @@ def separate_balances_data_for_p_l(balances_from_db):
     return {'old_balances': old_balances,
             'old_tokens_p_l': old_tokens_p_l, 
             'old_tokens_list' : tokens_list}
+
+
+def calculate_total_balance_values(balances, prices):
+    total_usd_value = 0
+    for contract, data in balances.items():
+        if prices.get(contract):
+
+            usd_price = prices[contract].get('price_usd') or 0
+            balance = data['balance'] or 0
+            total_value = float(usd_price)*float(balance)
+            total_usd_value += total_value
+            prices[contract].update({'usd_value': total_value})
+    prices.update({'total_usd_value': total_usd_value})
