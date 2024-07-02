@@ -23,8 +23,9 @@ var start = function () {
     historic_balances_p_l: handleHistoricBalancesPLMessage,
     tokens_and_wallet_p_l_info: handleTokensAndWalletPLMessage,
     suspicious_data: handleSuspiciousDataMessage,
+    update_available: handleUpdateAvailableMessage,
   };
-  // Establishes channels connection
+  // establish channels connection
   var es = new ReconnectingEventSource("/events/");
 
   es.onopen = function () {
@@ -55,7 +56,7 @@ var start = function () {
     "message",
     function (e) {
       let resp = JSON.parse(e.data);
-      console.log(resp);
+      // console.log(resp);
       Object.keys(resp).forEach((data_info) => {
         console.log(data_info);
 
@@ -72,7 +73,7 @@ var start = function () {
   );
 
   function handleBalancesMessage(data) {
-    // Parses the balances object sent via channels and generates the HTML to display them
+    // parses the balances object sent via channels and generates the HTML to display them
     function createBalanceEntry(hash, tdata, extraClass) {
       let html = "";
       html += `
@@ -106,7 +107,7 @@ var start = function () {
   }
 
   function handleTransactionsMessage(data) {
-    // Parses the transactions object sent via channels and generates HTML to display them
+    // parses the transactions object sent via channels and generates HTML to display them
     console.log("handleTransactionsMessage");
 
     function createTransactionsEntry(hash, transaction_info) {
@@ -115,10 +116,10 @@ var start = function () {
       sent_data = transaction_info.sent;
       html += `<div id="transaction-${hash}" class="transaction-container">`;
 
-      // Placeholder for the timestamp
+      // placeholder for the timestamp
       html += `<span class="transaction-timestamp">${ts}</span>`;
 
-      // Conditionally append HTML for sent amount if it exists
+      // conditionally append HTML for sent amount if it exists
       if (transaction_info.sent) {
         html += `
         <div>
@@ -130,7 +131,7 @@ var start = function () {
       `;
       }
 
-      // Conditionally append HTML for received amount if it exists
+      // conditionally append HTML for received amount if it exists
       if (transaction_info.received) {
         html += `
         <div>
@@ -142,7 +143,7 @@ var start = function () {
       `;
       }
 
-      // Close the transaction container div
+      // close the transaction container div
       html += `</div>`;
       return html;
     }
@@ -161,8 +162,12 @@ var start = function () {
   }
 
   function handleCurrentTokenPricesMessage(data) {
-    // Parses the current token prices object sent via channels and adds the current prices to the already created balances entries
+    // parse the current token prices object sent via channels and add the current prices to the already created balances entries
     console.log("handleCurrentTokenPricesMessage");
+    if (walletDataStatus === "ready") {
+      // ignore the new prices
+      return;
+    }
 
     Object.keys(data).forEach((contract) => {
       let balanceDiv = document.querySelector(
@@ -191,7 +196,7 @@ var start = function () {
 
       // add last checked token price value
       if (lastCheckedDiv) {
-        lastCheckedDiv.innerHTML = `$${data[contract]?.latest_price}`;
+        lastCheckedDiv.innerHTML = `$${data[contract]?.price_usd}`;
       }
 
       // add token image
@@ -217,8 +222,6 @@ var start = function () {
       transactionElement.remove();
     });
   }
-
-  // sortBalancesList("balance-usd-value", toggleSortState("balances"))
 
   function handleFinalizedUsdPricesMessage(data) {
     console.log("handleFinalizedUsdPricesMessage");
@@ -252,6 +255,18 @@ var start = function () {
         }
       }
     });
+  }
+
+  function handleUpdateAvailableMessage(data) {
+    console.log(data);
+    const updateNotification = document.querySelector(".update-notification > .notification-icon");
+    if (data === true) {
+      updateNotification.classList.remove("hidden");
+
+      updateNotification.addEventListener("click", () => {
+        location.reload();
+      });
+    }
   }
 };
 

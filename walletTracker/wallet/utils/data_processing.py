@@ -33,11 +33,11 @@ async def process_current_prices(prices, balances, tokens_list):
             usd_value = float(
                 token_data['price_usd']) * balances[contract]['balance']
             balances_prices_info[contract] = {
-                'latest_price': token_data['price_usd']}
+                'price_usd': token_data['price_usd']}
             balances_prices_info[contract]['usd_value'] = usd_value
             total_usd_value += usd_value
         else:
-            balances_prices_info[contract] = {'latest_price': '0'}
+            balances_prices_info[contract] = {'price_usd': '0'}
             balances_prices_info[contract]['usd_value'] = 0
         if token_data['image_url'] != 'missing.png':
             tokens_list[contract].update(
@@ -177,14 +177,14 @@ def match_historic_prices(historic_prices, transaction_details, tokens_p_l = Non
                     -1 * exchanged_token_amount)
                 previous_token_balance = 0
             else:
-                previous_token_balance = token_p_l_details['balance']
+                previous_token_balance = float(token_p_l_details['balance'])
                 token_p_l_details['balance'] = (
                     previous_token_balance + exchanged_token_amount) if is_receiver else (previous_token_balance - exchanged_token_amount)
             if 'total_usd_spent_for_token' not in token_p_l_details.keys():
                 token_total_spent = value_of_trade_in_usd if is_receiver else 0
                 token_p_l_details['total_usd_spent_for_token'] = token_total_spent
             else:
-                token_total_spent = token_p_l_details['total_usd_spent_for_token']
+                token_total_spent = float(token_p_l_details['total_usd_spent_for_token'])
                 if is_receiver:
                     new_value = token_total_spent + value_of_trade_in_usd
                     token_p_l_details['total_usd_spent_for_token'] = new_value
@@ -192,21 +192,21 @@ def match_historic_prices(historic_prices, transaction_details, tokens_p_l = Non
                 token_total_sold = value_of_trade_in_usd if not is_receiver else 0
                 token_p_l_details['total_usd_received_from_selling'] = token_total_sold
             else:
-                token_total_sold = token_p_l_details['total_usd_received_from_selling']
+                token_total_sold = float(token_p_l_details['total_usd_received_from_selling'])
                 if not is_receiver:
                     new_value = token_total_sold + value_of_trade_in_usd
                     token_p_l_details['total_usd_received_from_selling'] = new_value
             if 'purchased_token_amount' not in token_p_l_details.keys():
                 token_p_l_details['purchased_token_amount'] = exchanged_token_amount if is_receiver else 0
             else:
-                prev_value = token_p_l_details['purchased_token_amount']
+                prev_value = float(token_p_l_details['purchased_token_amount'])
                 new_entry_value = prev_value + \
                     exchanged_token_amount if is_receiver else prev_value + 0
                 token_p_l_details['purchased_token_amount'] = new_entry_value
             if 'sold_token_amount' not in token_p_l_details.keys():
                 token_p_l_details['sold_token_amount'] = exchanged_token_amount if not is_receiver else 0
             else:
-                prev_value = token_p_l_details['sold_token_amount']
+                prev_value = float(token_p_l_details['sold_token_amount'])
                 new_entry_value = prev_value + \
                     exchanged_token_amount if not is_receiver else prev_value + 0
                 token_p_l_details['sold_token_amount'] = new_entry_value
@@ -214,8 +214,8 @@ def match_historic_prices(historic_prices, transaction_details, tokens_p_l = Non
                 token_p_l_details['net_purchase_price'] = trade_usd_price if is_receiver else (
                     -1*trade_usd_price)
             else:
-                current_token_balance = token_p_l_details['balance']
-                token_net_entry = token_p_l_details['net_purchase_price']
+                current_token_balance = float(token_p_l_details['balance'])
+                token_net_entry = float(token_p_l_details['net_purchase_price'])
                 modifier = 1 if is_receiver else -1
                 if current_token_balance == 0:
                     new_entry_value = 0
@@ -227,16 +227,16 @@ def match_historic_prices(historic_prices, transaction_details, tokens_p_l = Non
                 token_p_l_details['average_purchase_price'] = trade_usd_price if is_receiver else 0
             else:
                 if is_receiver:
-                    purchased_token_balance = token_p_l_details['purchased_token_amount']
+                    purchased_token_balance = float(token_p_l_details['purchased_token_amount'])
                     if purchased_token_balance == 0:
                         new_entry_value = 0
                     else:
-                        new_entry_value = ((token_p_l_details['average_purchase_price'] * previous_token_balance) + (
+                        new_entry_value = ((float(token_p_l_details['average_purchase_price']) * previous_token_balance) + (
                             trade_usd_price*exchanged_token_amount)) / purchased_token_balance
                     token_p_l_details['average_purchase_price'] = new_entry_value
 
-            token_historic_p_l = token_p_l_details['total_usd_received_from_selling'] - \
-                token_p_l_details['total_usd_spent_for_token']
+            token_historic_p_l = float(token_p_l_details['total_usd_received_from_selling']) - \
+                float(token_p_l_details['total_usd_spent_for_token'])
             token_p_l_details['token_realized_p_l'] = token_historic_p_l
     # print(tokens_p_l)
 
@@ -444,11 +444,11 @@ def calculate_total_token_p_l(balances_prices_info, historic_balances_p_l):
     current_tokens_p_l = {}
     total_wallet_p_l, total_wallet_spent, total_wallet_sold = 0, 0, 0
     for contract, details in historic_balances_p_l.items():
-        token_historic_p_l = details['token_realized_p_l']
-        token_current_holdings_value = balances_prices_info[contract]['usd_value']
+        token_historic_p_l = float(details['token_realized_p_l'] or 0)
+        token_current_holdings_value = float(balances_prices_info[contract]['usd_value'] or 0)
         token_final_p_l = token_historic_p_l + token_current_holdings_value
-        token_total_spent = details['total_usd_spent_for_token']
-        token_total_sold = details['total_usd_received_from_selling']
+        token_total_spent = float(details['total_usd_spent_for_token'] or 0)
+        token_total_sold = float(details['total_usd_received_from_selling'] or 0)
 
         current_tokens_p_l[contract] = token_final_p_l
         total_wallet_p_l = total_wallet_p_l + token_final_p_l
@@ -465,7 +465,6 @@ def calculate_total_token_p_l(balances_prices_info, historic_balances_p_l):
 
 
 def separate_balances_data_for_p_l(balances_from_db):
-    print('--------------------------------------------------------')
     old_balances = {token.token.contract: {"tokenSymbol": token.token.token_symbol, "balance": float(token.balance)}
                     for token in balances_from_db}
     token_ids = {token.token.id : token.token.contract for token in balances_from_db}

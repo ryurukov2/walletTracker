@@ -35,7 +35,6 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, 
     'Creates and executes tasks to asyncronously query current token prices and historic token prices'
     
     async with aiohttp.ClientSession() as session:
-        _a = list(filter(lambda x: x != 'eth', balances.keys()))
         
         # current_tasks = await gather_current_prices(session, _a)
         tasks = [asyncio.create_task(gather_historic_prices(
@@ -57,11 +56,13 @@ async def query_historic_and_current_prices(timestamps_of_eth_trades, balances, 
         # print(balances_prices_info)
         return balances_prices_info, normalized_prices
 
-    # if walletTransactionsTimespan < 7200000:
-    #     toTs = timeTo
-    #     limit = 2000
-    # else:
-    # print(timestamps_of_eth_trades)
+async def query_current_prices(balances):
+    'Creates and executes tasks to query current token prices'
+
+    async with aiohttp.ClientSession() as session:
+
+        return await gather_current_prices(session, list(balances.keys()), isUpdate=True)
+
 
 async def make_fetch(session, url, params={}):
     'Basic fetch function for async API requests'
@@ -80,7 +81,7 @@ async def make_fetch(session, url, params={}):
 
 
 
-async def gather_current_prices(session, items_list: list):
+async def gather_current_prices(session, items_list: list, isUpdate = False):
     'Query the current values of the tokens in the wallet'
     def chunks(lst, n):
         'split a list into chunks of n items'
@@ -99,8 +100,10 @@ async def gather_current_prices(session, items_list: list):
 
     GECKOTERMINAL_BASE_URL = 'https://api.geckoterminal.com/api/v2'
     network = 'eth'
-    # url = f'{GECKOTERMINAL_BASE_URL}/simple/networks/{network}/token_price/'
-    gecko_url = f'{GECKOTERMINAL_BASE_URL}/networks/{network}/tokens/multi/'
+    if isUpdate:
+        gecko_url = f'{GECKOTERMINAL_BASE_URL}/simple/networks/{network}/token_price/'
+    else:
+        gecko_url = f'{GECKOTERMINAL_BASE_URL}/networks/{network}/tokens/multi/'
 
     tasks.extend([asyncio.create_task(make_fetch(session, url=gecko_url+chunk))
              for chunk in chunked_list])
@@ -120,9 +123,15 @@ async def gather_current_prices(session, items_list: list):
 
         if 'data' in result:
             # means it is one of the non eth batches
-            results.extend(result['data'])
-    processed.update({att['attributes']['address']: {'image_url': att['attributes']['image_url'], 'price_usd': att['attributes']['price_usd']} for att in results})
-
+            if isUpdate:
+                processed.update({contract: {'price_usd': result['data']['attributes']['token_prices'][contract]} 
+                                   for contract in result['data']['attributes']['token_prices'].keys()})
+            else:
+                results.extend(result['data'])
+    
+    if not isUpdate:
+        processed.update({att['attributes']['address']: {'image_url': att['attributes']['image_url'], 'price_usd': att['attributes']['price_usd']} for att in results})
+    
         # print(result)
     # print(results)
     return {'result_from': 'current', 'result': processed}

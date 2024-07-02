@@ -205,3 +205,44 @@ input:checked + .slider {
 input:checked + .slider:before {
     transform: translateX(26px);
 }
+
+.address-section {
+    display: flex;
+    align-items: center;
+  }
+  
+  .result-address {
+    margin-right: 10px;
+  }
+  
+  .update-notification {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+  }
+  
+  .notification-icon {
+    font-size: 24px;
+  }
+  
+  .update-notification[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #fff;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s;
+    font-size: 14px;
+    z-index: 1;
+  }
+  
+  .update-notification:hover[data-tooltip]::after {
+    opacity: 1;
+    visibility: visible;
+  }
