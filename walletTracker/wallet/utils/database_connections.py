@@ -32,8 +32,8 @@ def wallet_data_available_in_db(address_queried):
         # return db_wallet
         wallet_data = query_all_wallet_info_from_database(db_wallet)
 
-        return wallet_data
-        # return False
+        # return wallet_data
+        return False
     else:
         db_wallet.is_being_calculated = True
         db_wallet.save()
@@ -59,8 +59,6 @@ def save_wallet_info_to_db(address_queried: str, db_data: dict):
 
     wallet = Wallet.objects.get(address=address_queried)
     balances = db_data.get('balances') or {}
-
-    tokens = Token.objects.all().values_list('contract', 'id')
 
     
     def save_tokens_and_wallet_token_balance():
@@ -147,7 +145,7 @@ def save_wallet_info_to_db(address_queried: str, db_data: dict):
 
                         additional_details = transactions_details[hash]
                         price_in_usd = np.format_float_positional(
-                            (calculated_historic_prices.get(hash) or None).get('price_in_usd'))
+                            (calculated_historic_prices.get(hash) or {}).get('price_in_usd') or 0)
                         price_in_denominated_token = np.format_float_positional(
                             additional_details['price_in_denominated_token'])
                         trade_transaction_defaults = {'exchanged_token_id':token_ids.get(
@@ -162,7 +160,7 @@ def save_wallet_info_to_db(address_queried: str, db_data: dict):
                             transaction=transaction, defaults=trade_transaction_defaults
                         )
                 except Exception as e:
-                    print(e)
+                    print(f'Exception in save_transactions_and_trade_details - {e}')
     
     def save_historical_eth_prices():
         normalized_historic_prices = db_data.get('normalized_historic_prices') or {}
@@ -178,6 +176,7 @@ def save_wallet_info_to_db(address_queried: str, db_data: dict):
 
     if 'tokens_list' in db_data:
         save_tokens_and_wallet_token_balance()
+    tokens = Token.objects.all().values_list('contract', 'id')
     token_ids = {contract: id for contract, id in tokens}
     if 'transactions' in db_data:
         save_transactions_and_trade_details()

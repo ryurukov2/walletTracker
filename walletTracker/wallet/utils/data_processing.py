@@ -60,8 +60,8 @@ async def normalize_historic_prices(prices_list):
 def calculate_purchase_exchange_rate(transactions):
     'Calculates exchange rates at the time of each transaction'
     # eth contract addresses for the tokens most often used as currency to buy/sell
-    denominators = {'ETH': 'eth', 'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-                    'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'}
+    denominators = {'ETH': 'eth', 'USDT': '0xdac17f958d2ee523a2206206994597c13d831ec7',
+                    'USDC': '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'}
 
     transaction_details = OrderedDict()
     timestamps_of_eth_trades = []
@@ -70,6 +70,7 @@ def calculate_purchase_exchange_rate(transactions):
         denominated_in = ''
         traded_token = ''
         traded_token_symbol = ''
+        price_of_token_in_usd = ''
         is_receiver_of_traded_token = True
 
         if 'received' in moves.keys() and 'sent' in moves.keys() and len(moves['received']) == len(moves['sent']) and len(moves['received']) == 1:
@@ -81,7 +82,7 @@ def calculate_purchase_exchange_rate(transactions):
             transaction_block = moves['blockNumber']
 
             # check if the wallet 'bought' or 'sold' a currency to determine which one the denominator should be
-            if received_contract in denominators.values():
+            if received_contract.lower() in denominators.values():
                 # sold
                 eth_traded = received_info['final_amount']
                 traded_amount = sent_info['final_amount']
@@ -109,7 +110,7 @@ def calculate_purchase_exchange_rate(transactions):
                 price_of_token_in_usd = 'pending'
 
                 timestamps_of_eth_trades.append(transaction_timestamp)
-            elif denominated_in == denominators['USDT'] or denominated_in == denominators['USDC']:
+            elif denominated_in == 'USDT' or denominated_in == 'USDC':
                 price_of_token_in_usd = price_in_denominated_token
 
             _txn_details_info = {'timeStamp': transaction_timestamp,
@@ -339,7 +340,7 @@ def calculate_balances_and_txns(address, combined_data, transactions=None, balan
             if transaction_entry_data['to'].lower() == address.lower():
                 isReceiver = True
             elif transaction_entry_data['from']:
-                if tx_fee == 0 and transaction_entry_data['gasPrice'] != '' and transaction_entry_data['gasUsed'] != '':
+                if tx_fee == 0 and (transaction_entry_data.get('gasPrice') or '') != '' and (transaction_entry_data.get('gasUsed') or '') != '':
                     # check that fee hasn'transaction_entry_data been set yet, and check that fee numbers exist in dataset
                     tx_fee = int(
                         transaction_entry_data['gasPrice'])*int(transaction_entry_data['gasUsed'])
