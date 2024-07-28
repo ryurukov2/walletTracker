@@ -32,8 +32,8 @@ def wallet_data_available_in_db(address_queried):
         # return db_wallet
         wallet_data = query_all_wallet_info_from_database(db_wallet)
 
-        # return wallet_data
-        return False
+        return wallet_data
+        # return False
     else:
         db_wallet.is_being_calculated = True
         db_wallet.save()
