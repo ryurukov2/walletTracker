@@ -1,3 +1,7 @@
+{% load static %}
+<head>
+    <link rel="icon" type="image" href="{% static 'walletTracker/images/favicon.png' %}" >
+</head>
 <div>
     <ul>
         {% for transaction in page_obj %}

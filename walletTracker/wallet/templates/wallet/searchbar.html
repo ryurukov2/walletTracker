@@ -1,0 +1,14 @@
+{% load static %}
+<head>
+    <link rel="stylesheet"
+    href="{% static 'walletTracker/css/searchbar.css' %}">
+</head>
+<div class="header-container search-div">
+    <form method="post" action="{% url 'wallet search' %}">
+      {% csrf_token %}
+      <label for="address">Address:</label>
+      <input type="text" id="address" name="address" placeholder="Paste a wallet address" required>
+      <input type="submit" value="Submit">
+    </form>
+
+</div>

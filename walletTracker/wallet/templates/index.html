@@ -1,1 +1,12 @@
-f
+{% load static %}
+{% include "wallet/searchbar.html" %}
+<html>
+    <head>
+        <link rel="icon" type="image" href="{% static 'walletTracker/images/favicon.png' %}" >
+        <link rel="stylesheet"
+              href="{% static 'walletTracker/css/index.css' %}">
+    </head>
+    <body>
+        <h1 class="index_title">Welcome to Wallet Tracker! An intuitive way to track your crypto wallets and their performance.</h1>
+    </body>
+</html>

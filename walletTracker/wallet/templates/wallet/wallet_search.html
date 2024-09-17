@@ -9,27 +9,14 @@
     <script src="{% static 'django_eventstream/reconnecting-eventsource.js' %}"></script>
     <script src="{% static 'walletTracker/js/wallet_search_js.js' %}"></script>
     
+    <link rel="icon" type="image" href="{% static 'walletTracker/images/favicon.png' %}" >
+
     <link rel="stylesheet" href="{% static 'walletTracker/css/wallet_search_styles.css' %}">
   </head>
   <body onload="start();">
-    {% comment %} <h1>Enter Address</h1> {% endcomment %}
-    <div class="header-container">
-      <form method="post">
-        {% csrf_token %}
-        <label for="address">Address:</label>
-        <input type="text" id="address" name="address" required>
-        <br>
-        <input type="submit" value="Submit">
-      </form>
+ 
+    {% include "wallet/searchbar.html" %}
 
-    </div>
-    {% comment %} <div>
-      {% if wallet_data.data_status == 'ready' %}
-        {{ wallet_data.data_status }}
-      {% else %}
-        data loading
-      {% endif %}
-    </div> {% endcomment %}
     <section class="address-section">
       <h2 class="result-address">{{ address }}</h2>
       <div class="update-notification" data-tooltip="New price data available. Refresh for latest data.">
@@ -78,8 +65,8 @@
             {% endif %}
             <div class="balance-token-symbol">{{ token_data.token.token_symbol }}</div>
           </div>
-          <span class="balance-token-balance">{{ token_data.balance }}</span> 
-          <span class="balance-token-last-checked-price-usd">${{ token_data.token.last_checked_price_usd }}</span> 
+          <span class="balance-token-balance">{{ token_data.balance|floatformat:-10 }}</span> 
+          <span class="balance-token-last-checked-price-usd">${{ token_data.token.decimal_price|floatformat:-15 }}</span> 
           <span class="balance-usd-value">
             {% if token_data.last_calculated_balance_usd != None %}
             ${{ token_data.last_calculated_balance_usd }}
